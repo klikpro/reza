@@ -70,7 +70,7 @@ export default function App() {
     <BrowserRouter>
       <Toaster />
       <Routes>
-        <Route path="/" element={user ? <Navigate to="/app" replace /> : <Landing />} />
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={user ? <Navigate to="/app" replace /> : <Auth />} />
         <Route
           path="/app"

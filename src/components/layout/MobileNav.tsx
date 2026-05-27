@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, BookOpen, Tag, Mic, Settings } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Tag, Mic, Settings, Home } from 'lucide-react'
 
 const items = [
+  { to: '/', label: 'Beranda', icon: Home, end: true },
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/memories', label: 'Ingatan', icon: BookOpen },
   { to: '/app/ask', label: 'Tanya', icon: Mic },
-  { to: '/app/categories', label: 'Kategori', icon: Tag },
   { to: '/app/settings', label: 'Setelan', icon: Settings },
 ]
 
