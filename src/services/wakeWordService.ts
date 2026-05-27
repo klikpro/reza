@@ -2,61 +2,56 @@ import type { UserSettings } from '@/types'
 
 export type OnDetectedCallback = () => void
 
+type SpeechRecognitionCtor = new () => InstanceType<typeof SpeechRecognition>
+
+function getSR(): SpeechRecognitionCtor | null {
+  if (typeof window === 'undefined') return null
+  return (window.SpeechRecognition || window.webkitSpeechRecognition) as SpeechRecognitionCtor || null
+}
+
 export class BrowserKeywordSpotting {
-  private recognition: SpeechRecognition | null = null
+  private recognition: InstanceType<typeof SpeechRecognition> | null = null
   private keyword: string
-  private sensitivity: number
   private onDetected: OnDetectedCallback | null = null
   private active = false
 
-  constructor(keyword = 'hey memory', sensitivity = 0.5) {
+  constructor(keyword = 'hey memory', _sensitivity = 0.5) {
     this.keyword = keyword.toLowerCase()
-    this.sensitivity = sensitivity
   }
 
   start(onDetected: OnDetectedCallback): boolean {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) return false
+    const SR = getSR()
+    if (!SR) return false
 
     this.onDetected = onDetected
     this.active = true
-    this.recognition = new SpeechRecognition()
+    this.recognition = new SR()
     this.recognition.continuous = true
     this.recognition.interimResults = true
 
-    this.recognition.onresult = (event) => {
+    this.recognition.onresult = (event: SpeechRecognitionEvent) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0].transcript.toLowerCase()
-        if (text.includes(this.keyword)) {
-          this.onDetected?.()
-        }
+        if (text.includes(this.keyword)) this.onDetected?.()
       }
     }
 
     this.recognition.onend = () => {
       if (this.active) {
-        // Restart if still active
         try { this.recognition?.start() } catch {}
       }
     }
 
-    try {
-      this.recognition.start()
-      return true
-    } catch {
-      return false
-    }
+    try { this.recognition.start(); return true } catch { return false }
   }
 
   stop(): void {
     this.active = false
-    this.recognition?.abort()
+    try { this.recognition?.abort() } catch {}
     this.recognition = null
   }
 
-  get isActive(): boolean {
-    return this.active
-  }
+  get isActive(): boolean { return this.active }
 }
 
 export class HotkeyWakeWord {
@@ -77,11 +72,7 @@ export class HotkeyWakeWord {
         e.altKey && 'alt',
         e.key.toLowerCase(),
       ].filter(Boolean).join('+')
-
-      if (combo === this.hotkey) {
-        e.preventDefault()
-        this.onDetected?.()
-      }
+      if (combo === this.hotkey) { e.preventDefault(); this.onDetected?.() }
     }
     document.addEventListener('keydown', this.handler)
     return true
@@ -96,20 +87,16 @@ export class HotkeyWakeWord {
 }
 
 export class NoWakeWord {
-  start(_onDetected: OnDetectedCallback): boolean { return true }
+  start(_cb: OnDetectedCallback): boolean { return true }
   stop(): void {}
 }
 
 export function createWakeWordProvider(settings: UserSettings) {
   switch (settings.wake_word_provider) {
     case 'browser-keyword':
-      return new BrowserKeywordSpotting(
-        settings.wake_word_custom || 'hey memory',
-        settings.wake_word_sensitivity || 0.5
-      )
+      return new BrowserKeywordSpotting(settings.wake_word_custom || 'hey memory', settings.wake_word_sensitivity || 0.5)
     case 'hotkey':
       return new HotkeyWakeWord(settings.wake_word_key || 'ctrl+shift+m')
-    case 'none':
     default:
       return new NoWakeWord()
   }
