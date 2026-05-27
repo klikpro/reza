@@ -66,6 +66,7 @@ export interface UserSettings {
 }
 
 export type ThemeName =
+  | 'bright-glass'
   | 'dark-minimal'
   | 'dark-glassmorphism'
   | 'light-clean'

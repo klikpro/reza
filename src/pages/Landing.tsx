@@ -1,292 +1,375 @@
-import { useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Brain, Mic, Search, Shield, Zap, Star, ArrowRight, Volume2, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
+import { useMemoryStore } from '@/store/useMemoryStore'
+import { createWakeWordProvider } from '@/services/wakeWordService'
+import { createRoundRobinSTT } from '@/services/sttService'
+import { createRoundRobinTTS } from '@/services/ttsService'
+import { answerQuery } from '@/services/aiService'
+import { useBrandingStore } from '@/store/useBrandingStore'
+import { Mic, MicOff, LogIn, Lock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 
-const features = [
-  {
-    icon: Mic,
-    title: 'Simpan via Suara',
-    description: 'Bicara dan ingatan Anda langsung tersimpan secara otomatis dengan transkripsi real-time.',
-    color: '#7c5cfc',
-  },
-  {
-    icon: Search,
-    title: 'Cari dengan Makna',
-    description: 'AI semantic search memahami maksud pertanyaan Anda, bukan hanya kata kunci.',
-    color: '#60a5fa',
-  },
-  {
-    icon: Volume2,
-    title: 'Jawaban Bersuara',
-    description: 'Panggil ingatan dengan wake word, dapatkan jawaban yang dibacakan langsung.',
-    color: '#34d399',
-  },
-  {
-    icon: Shield,
-    title: 'Privasi Terjaga',
-    description: 'Data Anda aman di Supabase. API key tersimpan terenkripsi hanya untuk Anda.',
-    color: '#f97316',
-  },
-  {
-    icon: Sparkles,
-    title: '14 Tema Visual',
-    description: 'Dari Dark Minimal hingga Cyberpunk — sesuaikan tampilan dengan kepribadian Anda.',
-    color: '#f43f5e',
-  },
-  {
-    icon: Zap,
-    title: 'Sangat Cepat',
-    description: 'Dibangun dengan Vite + React 18. Responsif, smooth, dan blazing fast.',
-    color: '#fbbf24',
-  },
-]
-
-const testimonials = [
-  { name: 'Budi Santoso', role: 'Software Engineer', text: 'MemoryVault mengubah cara saya bekerja. Sekarang saya bisa capture ide kapanpun tanpa repot mengetik.', stars: 5 },
-  { name: 'Sari Dewi', role: 'Content Creator', text: 'Wake word detection-nya luar biasa. Saya bisa panggil ingatan sambil masak tanpa pegang HP.', stars: 5 },
-  { name: 'Ahmad Rizki', role: 'Medical Doctor', text: 'Saya pakai ini untuk menyimpan catatan pasien. Semantic search-nya sangat membantu.', stars: 5 },
-]
+type Phase = 'idle' | 'wake' | 'listening' | 'processing' | 'speaking'
 
 export default function Landing() {
-  const particleRef = useRef<HTMLCanvasElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const rafRef = useRef<number>(0)
+  const { user } = useAuthStore()
+  const { settings } = useSettingsStore()
+  const { memories } = useMemoryStore()
+  const { branding } = useBrandingStore()
+  const navigate = useNavigate()
 
-  useEffect(() => {
-    const canvas = particleRef.current
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [transcript, setTranscript] = useState('')
+  const [answer, setAnswer] = useState('')
+  const [wakeActive, setWakeActive] = useState(false)
+  const wakeRef = useRef<ReturnType<typeof createWakeWordProvider> | null>(null)
+  const sttRef = useRef<ReturnType<typeof createRoundRobinSTT> | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  const siteName = branding?.site_name || 'MemoryVault'
+  const accentColor = branding?.accent_color || '#06b6d4'
+
+  // ── Audio visualizer ──────────────────────────────────────
+  const startVisualizer = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const ctx = new AudioContext()
+      const src = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      src.connect(analyser)
+      analyserRef.current = analyser
+    } catch { /* mic not granted, fallback to idle animation */ }
+  }, [])
+
+  const drawJarvis = useCallback(() => {
+    const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
+    const W = canvas.width
+    const H = canvas.height
+    const cx = W / 2
+    const cy = H / 2
+    const t = Date.now() / 1000
 
-    const particles: Array<{ x: number; y: number; vx: number; vy: number; r: number; alpha: number }> = []
-    for (let i = 0; i < 80; i++) {
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        r: Math.random() * 2 + 0.5,
-        alpha: Math.random() * 0.5 + 0.1,
-      })
+    ctx.clearRect(0, 0, W, H)
+
+    // Background radial glow
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.7)
+    bg.addColorStop(0, 'rgba(6,182,212,0.08)')
+    bg.addColorStop(0.5, 'rgba(139,92,246,0.04)')
+    bg.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, W, H)
+
+    // Get audio data or fake it
+    let dataArray: Uint8Array
+    let avg = 0.3 + 0.2 * Math.sin(t * 2)
+    if (analyserRef.current) {
+      const buf = new Uint8Array(analyserRef.current.frequencyBinCount)
+      analyserRef.current.getByteFrequencyData(buf)
+      dataArray = buf
+      avg = buf.reduce((a, b) => a + b, 0) / buf.length / 255
+    } else {
+      dataArray = new Uint8Array(256).map((_, i) =>
+        Math.floor(100 * Math.abs(Math.sin(t * 2 + i * 0.15)))
+      )
     }
 
-    let rafId: number
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      particles.forEach(p => {
-        p.x += p.vx
-        p.y += p.vy
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(124,92,252,${p.alpha})`
-        ctx.fill()
-      })
-      rafId = requestAnimationFrame(animate)
+    const pulse = 1 + avg * 0.4
+
+    // Concentric rings
+    const rings = [
+      { r: 60, w: 1.5, a: 0.6 },
+      { r: 100, w: 1, a: 0.4 },
+      { r: 150, w: 2, a: 0.7 },
+      { r: 200, w: 1, a: 0.3 },
+      { r: 260, w: 1.5, a: 0.5 },
+    ]
+    rings.forEach(({ r, w, a }) => {
+      ctx.beginPath()
+      ctx.arc(cx, cy, r * pulse, 0, Math.PI * 2)
+      ctx.strokeStyle = `rgba(6,182,212,${a})`
+      ctx.lineWidth = w
+      ctx.stroke()
+    })
+
+    // Rotating dashes on outer ring
+    const dashCount = 36
+    for (let i = 0; i < dashCount; i++) {
+      const angle = (i / dashCount) * Math.PI * 2 + t * 0.5
+      const r1 = 270 * pulse
+      const r2 = r1 + (i % 3 === 0 ? 14 : 8)
+      const x1 = cx + Math.cos(angle) * r1
+      const y1 = cy + Math.sin(angle) * r1
+      const x2 = cx + Math.cos(angle) * r2
+      const y2 = cy + Math.sin(angle) * r2
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(t + i))
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.strokeStyle = `rgba(139,92,246,${alpha})`
+      ctx.lineWidth = i % 3 === 0 ? 2 : 1
+      ctx.stroke()
     }
-    animate()
-    return () => cancelAnimationFrame(rafId)
+
+    // Frequency bars in a circle
+    const barCount = Math.min(dataArray.length, 128)
+    for (let i = 0; i < barCount; i++) {
+      const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2
+      const val = dataArray[i] / 255
+      const innerR = 115 * pulse
+      const outerR = innerR + val * 90
+      const x1 = cx + Math.cos(angle) * innerR
+      const y1 = cy + Math.sin(angle) * innerR
+      const x2 = cx + Math.cos(angle) * outerR
+      const y2 = cy + Math.sin(angle) * outerR
+      const h = 180 + (i / barCount) * 120  // cyan → purple hue
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.strokeStyle = `hsla(${h},90%,70%,${0.5 + val * 0.5})`
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+
+    // Inner core glow
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 55 * pulse)
+    core.addColorStop(0, `rgba(6,182,212,${0.3 + avg * 0.5})`)
+    core.addColorStop(0.5, `rgba(139,92,246,${0.2 + avg * 0.3})`)
+    core.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.beginPath()
+    ctx.arc(cx, cy, 55 * pulse, 0, Math.PI * 2)
+    ctx.fillStyle = core
+    ctx.fill()
+
+    // Center circle
+    ctx.beginPath()
+    ctx.arc(cx, cy, 28 * pulse, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(6,182,212,${0.15 + avg * 0.3})`
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(6,182,212,0.8)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    // Floating particles
+    for (let i = 0; i < 20; i++) {
+      const angle = (i / 20) * Math.PI * 2 + t * (0.3 + i * 0.02)
+      const r = (180 + i * 6) * pulse + avg * 30
+      const px = cx + Math.cos(angle) * r
+      const py = cy + Math.sin(angle) * r
+      const size = 1.5 + avg * 3
+      ctx.beginPath()
+      ctx.arc(px, py, size, 0, Math.PI * 2)
+      ctx.fillStyle = `hsla(${190 + i * 8},90%,75%,${0.4 + avg * 0.6})`
+      ctx.fill()
+    }
+
+    // Phase text overlay
+    if (phase === 'wake') {
+      ctx.font = 'bold 14px Inter, sans-serif'
+      ctx.fillStyle = 'rgba(6,182,212,0.9)'
+      ctx.textAlign = 'center'
+      ctx.fillText('WAKE WORD DETECTED', cx, cy + 80)
+    }
+
+    rafRef.current = requestAnimationFrame(drawJarvis)
+  }, [phase])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio
+    const ctx = canvas.getContext('2d')
+    if (ctx) ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+    drawJarvis()
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [drawJarvis])
+
+  // ── Wake word on landing (only if logged in + configured) ──
+  useEffect(() => {
+    if (!user || !settings || settings.wake_word_provider === 'none') return
+
+    const provider = createWakeWordProvider(settings)
+    wakeRef.current = provider
+    provider.start(async () => {
+      setPhase('wake')
+      await startVisualizer()
+      setTimeout(() => startListening(), 1200)
+    })
+    setWakeActive(true)
+
+    return () => { provider.stop(); setWakeActive(false) }
+  }, [user, settings?.wake_word_provider])
+
+  const startListening = useCallback(async () => {
+    if (!settings) return
+    setPhase('listening')
+    setTranscript('')
+    setAnswer('')
+
+    const stt = createRoundRobinSTT(settings)
+    sttRef.current = stt
+    let final = ''
+
+    stt.start(
+      (r) => {
+        if (r.isFinal) { final += r.transcript + ' '; setTranscript(final) }
+        else setTranscript(final + r.transcript)
+      },
+      () => {}
+    )
+
+    setTimeout(async () => {
+      stt.stop()
+      if (!final.trim()) { setPhase('idle'); return }
+      setPhase('processing')
+      if (!user) { setPhase('idle'); return }
+      const result = await answerQuery(final.trim(), user.id, settings, memories)
+      setAnswer(result.answer)
+      setPhase('speaking')
+      const tts = createRoundRobinTTS(settings)
+      await tts.speak(result.answer)
+      setPhase('idle')
+    }, 7000)
+  }, [settings, user, memories])
+
+  const handleMicClick = () => {
+    if (!user) { navigate('/login'); return }
+    startListening()
+  }
+
+  // resize canvas
+  useEffect(() => {
+    const resize = () => {
+      const c = canvasRef.current
+      if (!c) return
+      c.width = c.offsetWidth * window.devicePixelRatio
+      c.height = c.offsetHeight * window.devicePixelRatio
+    }
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
   }, [])
 
+  const phaseLabel: Record<Phase, string> = {
+    idle: wakeActive ? `Ucapkan "${settings?.wake_word_custom || 'hey memory'}"` : siteName,
+    wake: 'Wake word terdeteksi...',
+    listening: 'Mendengarkan...',
+    processing: 'Mencari ingatan...',
+    speaking: 'Menjawab...',
+  }
+
   return (
-    <div className="min-h-screen" style={{ background: '#0a0a0f', color: '#e2e2ff' }}>
-      {/* Particle background */}
-      <canvas ref={particleRef} className="fixed inset-0 pointer-events-none" style={{ opacity: 0.6 }} />
+    <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 40%, #f5f3ff 100%)' }}>
 
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7c5cfc, #9d7dff)', boxShadow: '0 0 20px rgba(124,92,252,0.5)' }}>
-            <Brain size={18} className="text-white" />
-          </div>
-          <span className="font-bold text-xl" style={{ color: '#e2e2ff' }}>MemoryVault</span>
+      {/* Top-right login button */}
+      <div className="absolute top-6 right-6 z-20">
+        {user ? (
+          <button onClick={() => navigate('/app')}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm text-white shadow-lg"
+            style={{ background: `linear-gradient(135deg, ${accentColor}, #8b5cf6)` }}>
+            Dashboard →
+          </button>
+        ) : (
+          <button onClick={() => navigate('/login')}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm text-white shadow-lg"
+            style={{ background: `linear-gradient(135deg, ${accentColor}, #8b5cf6)` }}>
+            <LogIn size={15} /> Login
+          </button>
+        )}
+      </div>
+
+      {/* Site name top-left */}
+      <div className="absolute top-6 left-6 z-20 flex items-center gap-2">
+        {branding?.logo_url && (
+          <img src={branding.logo_url} alt="logo" className="w-8 h-8 object-contain rounded-lg" />
+        )}
+        <span className="font-black text-xl" style={{ color: accentColor }}>{siteName}</span>
+      </div>
+
+      {/* Main Jarvis canvas */}
+      <div className="relative w-full max-w-2xl aspect-square max-h-[70vh]">
+        <canvas ref={canvasRef} className="w-full h-full" />
+
+        {/* Center mic button */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <motion.button
+            onClick={handleMicClick}
+            className="pointer-events-auto relative w-14 h-14 rounded-full flex items-center justify-center shadow-2xl"
+            style={{
+              background: user
+                ? `linear-gradient(135deg, ${accentColor}, #8b5cf6)`
+                : 'rgba(156,163,175,0.5)',
+              backdropFilter: 'blur(8px)',
+            }}
+            whileHover={user ? { scale: 1.1 } : {}}
+            whileTap={user ? { scale: 0.95 } : {}}
+            animate={phase === 'listening' ? { scale: [1, 1.08, 1] } : {}}
+            transition={{ repeat: phase === 'listening' ? Infinity : 0, duration: 0.8 }}
+            title={user ? 'Mulai bicara' : 'Login untuk menggunakan fitur ini'}
+          >
+            {user
+              ? phase === 'listening' ? <MicOff size={22} className="text-white" /> : <Mic size={22} className="text-white" />
+              : <Lock size={20} className="text-white opacity-70" />
+            }
+            {phase === 'listening' && (
+              <span className="absolute inset-0 rounded-full animate-ping opacity-30"
+                style={{ background: accentColor }} />
+            )}
+          </motion.button>
         </div>
-        <div className="flex items-center gap-4">
-          <Link to="/login" className="text-sm font-medium" style={{ color: '#a0a0c0' }}>Masuk</Link>
-          <Link to="/login" className="btn-primary text-sm" style={{ background: 'linear-gradient(135deg, #7c5cfc, #9d7dff)' }}>
-            Mulai Gratis
-          </Link>
-        </div>
-      </nav>
+      </div>
 
-      {/* Hero */}
-      <section className="relative z-10 text-center px-6 pt-20 pb-32 max-w-5xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-        >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border mb-8 text-sm"
-            style={{ borderColor: 'rgba(124,92,252,0.4)', background: 'rgba(124,92,252,0.08)', color: '#9d7dff' }}>
-            <Sparkles size={14} />
-            <span>AI-Powered Personal Memory Manager</span>
-          </div>
-
-          <h1 className="text-5xl sm:text-7xl font-black mb-6 leading-tight">
-            Ingatan Anda,{' '}
-            <span style={{ background: 'linear-gradient(135deg, #7c5cfc, #60a5fa, #34d399)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Selalu Tersedia
-            </span>
-          </h1>
-
-          <p className="text-xl mb-10 max-w-2xl mx-auto leading-relaxed" style={{ color: '#a0a0c0' }}>
-            Simpan momen, ide, dan catatan lewat suara. Panggil kembali kapanpun
-            dengan pertanyaan natural — dijawab oleh AI yang mengerti konteks Anda.
+      {/* Status label */}
+      <motion.div className="mt-6 text-center px-6 z-10" animate={{ opacity: 1 }}>
+        <p className="text-lg font-semibold" style={{ color: accentColor }}>
+          {phaseLabel[phase]}
+        </p>
+        {transcript && (
+          <p className="text-sm mt-2 max-w-md mx-auto italic" style={{ color: '#6b7280' }}>
+            "{transcript}"
           </p>
+        )}
+      </motion.div>
 
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              to="/login"
-              className="flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-lg text-white transition-all"
-              style={{ background: 'linear-gradient(135deg, #7c5cfc, #9d7dff)', boxShadow: '0 0 30px rgba(124,92,252,0.5)' }}
-            >
-              <Brain size={20} /> Coba Sekarang
-              <ArrowRight size={18} />
-            </Link>
-            <a href="#features" className="flex items-center gap-2 px-8 py-4 rounded-2xl font-medium text-sm border"
-              style={{ borderColor: 'rgba(124,92,252,0.4)', color: '#9d7dff' }}>
-              Lihat Fitur
-            </a>
-          </div>
-        </motion.div>
+      {/* Answer card */}
+      <AnimatePresence>
+        {answer && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="mt-6 max-w-lg w-full mx-4 p-5 rounded-2xl shadow-xl z-10 text-sm leading-relaxed"
+            style={{
+              background: 'rgba(255,255,255,0.7)',
+              backdropFilter: 'blur(16px)',
+              border: `1px solid ${accentColor}40`,
+              color: '#1e293b',
+            }}
+          >
+            <p className="font-semibold mb-1" style={{ color: accentColor }}>Jawaban:</p>
+            {answer}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* Hero visual */}
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="mt-20 relative"
-        >
-          <div className="rounded-2xl border overflow-hidden shadow-2xl mx-auto max-w-3xl"
-            style={{ background: '#12121a', borderColor: '#2a2a40', boxShadow: '0 0 60px rgba(124,92,252,0.2)' }}>
-            {/* Fake browser bar */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ background: '#0e0e1a', borderColor: '#2a2a40' }}>
-              <div className="w-3 h-3 rounded-full" style={{ background: '#f87171' }} />
-              <div className="w-3 h-3 rounded-full" style={{ background: '#fbbf24' }} />
-              <div className="w-3 h-3 rounded-full" style={{ background: '#4ade80' }} />
-              <div className="flex-1 mx-4 h-6 rounded" style={{ background: '#1a1a28' }} />
-            </div>
-            <div className="p-6 grid grid-cols-3 gap-4">
-              {[
-                { label: 'Total Ingatan', value: '248', icon: '🧠', color: '#7c5cfc' },
-                { label: 'Bulan Ini', value: '34', icon: '📅', color: '#60a5fa' },
-                { label: 'Kategori', value: '12', icon: '🗂️', color: '#34d399' },
-              ].map(s => (
-                <div key={s.label} className="rounded-xl p-4 text-left" style={{ background: '#0e0e1a', border: '1px solid #2a2a40' }}>
-                  <div className="text-2xl mb-1">{s.icon}</div>
-                  <div className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</div>
-                  <div className="text-xs" style={{ color: '#606080' }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div className="px-6 pb-6 grid grid-cols-2 gap-3">
-              {['Beli susu besok pagi', 'Meeting klien jam 3 sore', 'Nama dokter: Dr. Ahmad Fauzi', 'Password WiFi: rumah123'].map(text => (
-                <div key={text} className="rounded-xl p-3 text-left text-sm" style={{ background: '#0e0e1a', border: '1px solid #2a2a40', color: '#a0a0c0' }}>
-                  🎤 {text}
-                </div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      </section>
-
-      {/* Features */}
-      <section id="features" className="relative z-10 px-6 py-24 max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-black mb-4">Fitur Lengkap</h2>
-          <p style={{ color: '#a0a0c0' }}>Semua yang Anda butuhkan untuk mengelola ingatan</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((f, i) => (
-            <motion.div
-              key={f.title}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-              className="p-6 rounded-2xl border hover:border-opacity-60 transition-all"
-              style={{ background: '#12121a', borderColor: '#2a2a40' }}
-            >
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
-                style={{ background: `${f.color}20`, border: `1px solid ${f.color}40` }}>
-                <f.icon size={22} style={{ color: f.color }} />
-              </div>
-              <h3 className="font-bold text-lg mb-2" style={{ color: '#e2e2ff' }}>{f.title}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: '#a0a0c0' }}>{f.description}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="relative z-10 px-6 py-24" style={{ background: 'rgba(124,92,252,0.05)' }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-black mb-4">Dicintai Penggunanya</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
-              <motion.div
-                key={t.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="p-6 rounded-2xl border"
-                style={{ background: '#12121a', borderColor: '#2a2a40' }}
-              >
-                <div className="flex gap-1 mb-4">
-                  {Array.from({ length: t.stars }).map((_, j) => (
-                    <Star key={j} size={14} fill="#fbbf24" style={{ color: '#fbbf24' }} />
-                  ))}
-                </div>
-                <p className="text-sm leading-relaxed mb-4" style={{ color: '#a0a0c0' }}>"{t.text}"</p>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: '#e2e2ff' }}>{t.name}</p>
-                  <p className="text-xs" style={{ color: '#606080' }}>{t.role}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="relative z-10 px-6 py-24 text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          viewport={{ once: true }}
-          className="max-w-2xl mx-auto"
-        >
-          <div className="inline-block p-1 rounded-3xl mb-8" style={{ background: 'linear-gradient(135deg, #7c5cfc40, #60a5fa40)' }}>
-            <div className="px-8 py-12 rounded-3xl" style={{ background: '#0a0a0f' }}>
-              <Brain size={48} className="mx-auto mb-6" style={{ color: '#7c5cfc' }} />
-              <h2 className="text-4xl font-black mb-4">Mulai Sekarang</h2>
-              <p className="mb-8" style={{ color: '#a0a0c0' }}>Gratis selamanya. Tidak perlu kartu kredit.</p>
-              <Link
-                to="/login"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-lg text-white"
-                style={{ background: 'linear-gradient(135deg, #7c5cfc, #9d7dff)', boxShadow: '0 0 30px rgba(124,92,252,0.5)' }}
-              >
-                <Brain size={20} /> Buat Akun Gratis
-              </Link>
-            </div>
-          </div>
-        </motion.div>
-      </section>
-
-      {/* Footer */}
-      <footer className="relative z-10 border-t px-6 py-8 text-center text-sm" style={{ borderColor: '#2a2a40', color: '#606080' }}>
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <Brain size={16} style={{ color: '#7c5cfc' }} />
-          <span className="font-semibold" style={{ color: '#a0a0c0' }}>MemoryVault</span>
-        </div>
-        <p>© 2024 MemoryVault. Dibuat dengan ❤️ menggunakan React + Supabase.</p>
-      </footer>
+      {/* Not logged in hint */}
+      {!user && (
+        <p className="mt-4 text-xs z-10" style={{ color: '#94a3b8' }}>
+          <Lock size={11} className="inline mr-1" />
+          Login untuk merekam ingatan dan menggunakan wake word
+        </p>
+      )}
     </div>
   )
 }

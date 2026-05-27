@@ -18,6 +18,33 @@ export interface ThemeConfig {
 
 export const themes: ThemeConfig[] = [
   {
+    name: 'bright-glass',
+    label: 'Bright Glass',
+    description: 'Cerah, ceria, glassmorphism terang — default MemoryVault',
+    emoji: '✨',
+    preview: { bg: '#e0f2fe', card: 'rgba(255,255,255,0.7)', accent: '#06b6d4', text: '#1e293b' },
+    cssVars: {
+      '--bg-primary': 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 40%, #f5f3ff 100%)',
+      '--bg-secondary': 'rgba(255,255,255,0.6)',
+      '--bg-tertiary': 'rgba(241,245,249,0.8)',
+      '--bg-card': 'rgba(255,255,255,0.7)',
+      '--bg-hover': 'rgba(6,182,212,0.06)',
+      '--accent': '#06b6d4',
+      '--accent-light': '#22d3ee',
+      '--accent-dark': '#0891b2',
+      '--text-primary': '#1e293b',
+      '--text-secondary': '#475569',
+      '--text-muted': '#94a3b8',
+      '--border': 'rgba(6,182,212,0.2)',
+      '--border-light': 'rgba(6,182,212,0.1)',
+      '--success': '#10b981',
+      '--warning': '#f59e0b',
+      '--error': '#ef4444',
+      '--shadow': '0 4px 24px rgba(6,182,212,0.15)',
+    },
+    bodyClass: 'theme-light',
+  },
+  {
     name: 'dark-minimal',
     label: 'Dark Minimal',
     description: 'Hitam pekat, tipografi bersih, aksen ungu',
@@ -395,7 +422,7 @@ export const themes: ThemeConfig[] = [
 ]
 
 export const defaultSettings = {
-  theme: 'dark-minimal' as ThemeName,
+  theme: 'bright-glass' as ThemeName,
   similarity_threshold: 0.7,
   max_memories_retrieve: 5,
   wake_word_sensitivity: 0.5,

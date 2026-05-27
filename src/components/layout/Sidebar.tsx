@@ -2,10 +2,11 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Brain, LayoutDashboard, BookOpen, Tag, Settings, Mic,
-  ChevronLeft, ChevronRight, LogOut, User, Plus
+  ChevronLeft, ChevronRight, LogOut, User, Plus, MessageSquare
 } from 'lucide-react'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCategoryStore } from '@/store/useCategoryStore'
+import { useBrandingStore } from '@/store/useBrandingStore'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/memories', label: 'Ingatan', icon: BookOpen },
   { to: '/app/categories', label: 'Kategori', icon: Tag },
+  { to: '/app/templates', label: 'Template', icon: MessageSquare },
   { to: '/app/ask', label: 'Tanya', icon: Mic },
   { to: '/app/settings', label: 'Pengaturan', icon: Settings },
 ]
@@ -24,6 +26,7 @@ const navItems = [
 export default function Sidebar({ open, onToggle }: SidebarProps) {
   const { user, signOut } = useAuthStore()
   const { categories } = useCategoryStore()
+  const { branding } = useBrandingStore()
   const navigate = useNavigate()
 
   return (
@@ -50,7 +53,7 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
                 className="font-bold text-base whitespace-nowrap"
                 style={{ color: 'var(--text-primary)' }}
               >
-                MemoryVault
+                {branding?.site_name || 'MemoryVault'}
               </motion.span>
             )}
           </AnimatePresence>

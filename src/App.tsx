@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
+import { useBrandingStore } from '@/store/useBrandingStore'
 import { applyTheme } from '@/styles/themes'
 
 // Pages
@@ -13,6 +14,7 @@ import Memories from '@/pages/app/Memories'
 import Categories from '@/pages/app/Categories'
 import Settings from '@/pages/app/Settings'
 import Ask from '@/pages/app/Ask'
+import Templates from '@/pages/app/Templates'
 import { Toaster } from '@/components/ui/Toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -34,16 +36,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { initialize, user, initialized } = useAuthStore()
   const { settings } = useSettingsStore()
+  const { fetchBranding } = useBrandingStore()
 
   useEffect(() => {
     initialize()
-  }, [initialize])
+    fetchBranding()
+  }, [initialize, fetchBranding])
 
   useEffect(() => {
     if (settings?.theme) {
       applyTheme(settings.theme)
     } else {
-      applyTheme('dark-minimal')
+      applyTheme('bright-glass')
     }
   }, [settings?.theme])
 
@@ -81,6 +85,7 @@ export default function App() {
           <Route path="categories" element={<Categories />} />
           <Route path="settings" element={<Settings />} />
           <Route path="ask" element={<Ask />} />
+          <Route path="templates" element={<Templates />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

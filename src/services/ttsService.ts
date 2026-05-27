@@ -1,78 +1,40 @@
 import type { UserSettings } from '@/types'
 
-export interface TTSOptions {
-  rate?: number
-  pitch?: number
-  volume?: number
-  voiceId?: string
-}
+interface TTSProvider { speak(text: string): Promise<void>; stop(): void }
 
-export class WebSpeechTTS {
-  private utterance: SpeechSynthesisUtterance | null = null
-  private settings: UserSettings
-
-  constructor(settings: UserSettings) {
-    this.settings = settings
-  }
-
+// ── Web Speech Synthesis ────────────────────────────────────
+class WebSpeechTTS implements TTSProvider {
+  constructor(private s: UserSettings) {}
   speak(text: string): Promise<void> {
     return new Promise((resolve, reject) => {
       window.speechSynthesis.cancel()
-      this.utterance = new SpeechSynthesisUtterance(text)
-      this.utterance.rate = this.settings.tts_rate || 1
-      this.utterance.pitch = this.settings.tts_pitch || 1
-      this.utterance.volume = this.settings.tts_volume || 1
-
-      const voices = window.speechSynthesis.getVoices()
-      if (this.settings.tts_voice_id) {
-        const voice = voices.find(v => v.voiceURI === this.settings.tts_voice_id)
-        if (voice) this.utterance.voice = voice
+      const u = new SpeechSynthesisUtterance(text)
+      u.rate = this.s.tts_rate || 1
+      u.pitch = this.s.tts_pitch || 1
+      u.volume = this.s.tts_volume || 1
+      if (this.s.tts_voice_id) {
+        const v = window.speechSynthesis.getVoices().find(x => x.voiceURI === this.s.tts_voice_id)
+        if (v) u.voice = v
       }
-
-      this.utterance.onend = () => resolve()
-      this.utterance.onerror = (e) => reject(new Error(e.error))
-      window.speechSynthesis.speak(this.utterance)
+      u.onend = () => resolve()
+      u.onerror = (e) => reject(new Error(e.error))
+      window.speechSynthesis.speak(u)
     })
   }
-
-  stop(): void {
-    window.speechSynthesis.cancel()
-  }
-
-  getVoices(): SpeechSynthesisVoice[] {
-    return window.speechSynthesis.getVoices()
-  }
+  stop() { window.speechSynthesis.cancel() }
 }
 
-export class OpenAITTS {
-  private apiKey: string
-  private voice: string
-  private model: string
-  private speed: number
+// ── OpenAI TTS ──────────────────────────────────────────────
+class OpenAITTS implements TTSProvider {
   private audio: HTMLAudioElement | null = null
-
-  constructor(settings: UserSettings) {
-    this.apiKey = settings.tts_api_key || ''
-    this.voice = settings.tts_voice_id || 'nova'
-    this.model = settings.tts_model || 'tts-1'
-    this.speed = settings.tts_rate || 1.0
-  }
-
+  constructor(private s: UserSettings) {}
   async speak(text: string): Promise<void> {
     const res = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: text,
-        voice: this.voice,
-        speed: this.speed,
-      }),
+      headers: { Authorization: `Bearer ${this.s.tts_api_key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.s.tts_model || 'tts-1', input: text, voice: this.s.tts_voice_id || 'nova', speed: this.s.tts_rate || 1 }),
     })
-
+    if (!res.ok) throw new Error(`OpenAI TTS ${res.status}`)
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     this.audio = new Audio(url)
@@ -82,79 +44,97 @@ export class OpenAITTS {
       this.audio!.play()
     })
   }
-
-  stop(): void {
-    this.audio?.pause()
-    this.audio = null
-  }
+  stop() { this.audio?.pause(); this.audio = null }
 }
 
-export class ElevenLabsTTS {
-  private apiKey: string
-  private voiceId: string
-  private modelId: string
+// ── ElevenLabs TTS ──────────────────────────────────────────
+class ElevenLabsTTS implements TTSProvider {
   private audio: HTMLAudioElement | null = null
+  constructor(private s: UserSettings) {}
+  async speak(text: string): Promise<void> {
+    const voiceId = this.s.tts_voice_id || '21m00Tcm4TlvDq8ikWAM'
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': this.s.tts_api_key || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, model_id: this.s.tts_model || 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+    })
+    if (!res.ok) throw new Error(`ElevenLabs TTS ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    this.audio = new Audio(url)
+    return new Promise((resolve, reject) => {
+      this.audio!.onended = () => { URL.revokeObjectURL(url); resolve() }
+      this.audio!.onerror = reject
+      this.audio!.play()
+    })
+  }
+  stop() { this.audio?.pause(); this.audio = null }
+}
 
-  constructor(settings: UserSettings) {
-    this.apiKey = settings.tts_api_key || ''
-    this.voiceId = settings.tts_voice_id || '21m00Tcm4TlvDq8ikWAM'
-    this.modelId = settings.tts_model || 'eleven_multilingual_v2'
+class SilentTTS implements TTSProvider {
+  speak(_t: string): Promise<void> { return Promise.resolve() }
+  stop() {}
+}
+
+// ── Round-robin TTS chain ───────────────────────────────────
+export class RoundRobinTTS {
+  private providers: Array<{ name: string; instance: TTSProvider }>
+  private index: number
+
+  constructor(providers: Array<{ name: string; instance: TTSProvider }>, startIndex = 0) {
+    this.providers = providers
+    this.index = startIndex % Math.max(providers.length, 1)
   }
 
   async speak(text: string): Promise<void> {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${this.voiceId}`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': this.apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text,
-          model_id: this.modelId,
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-        }),
+    if (this.providers.length === 0) return
+    const tried = new Set<number>()
+    const tryNext = async (): Promise<void> => {
+      if (tried.size >= this.providers.length) return
+      tried.add(this.index)
+      const p = this.providers[this.index]
+      try {
+        await p.instance.speak(text)
+        return
+      } catch (err) {
+        console.warn(`TTS ${p.name} failed:`, err)
+        this.index = (this.index + 1) % this.providers.length
+        return tryNext()
       }
-    )
-
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    this.audio = new Audio(url)
-    return new Promise((resolve, reject) => {
-      this.audio!.onended = () => { URL.revokeObjectURL(url); resolve() }
-      this.audio!.onerror = reject
-      this.audio!.play()
-    })
+    }
+    return tryNext()
   }
 
-  stop(): void {
-    this.audio?.pause()
-    this.audio = null
-  }
-
-  async getVoices(apiKey: string): Promise<Array<{ voice_id: string; name: string }>> {
-    const res = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': apiKey },
-    })
-    const data = await res.json()
-    return data.voices || []
-  }
+  stop() { this.providers.forEach(p => p.instance.stop()) }
 }
 
-export class SilentTTS {
-  speak(_text: string): Promise<void> {
-    return Promise.resolve()
+export function createRoundRobinTTS(settings: UserSettings): RoundRobinTTS {
+  const providers: Array<{ name: string; instance: TTSProvider }> = []
+
+  if (settings.tts_provider === 'none') {
+    providers.push({ name: 'silent', instance: new SilentTTS() })
+    return new RoundRobinTTS(providers)
   }
-  stop(): void {}
+
+  // Always Web Speech as base
+  providers.push({ name: 'web-speech', instance: new WebSpeechTTS(settings) })
+
+  if (settings.tts_api_key) {
+    if (settings.tts_provider === 'openai-tts') {
+      providers.push({ name: 'openai', instance: new OpenAITTS(settings) })
+    }
+    if (settings.tts_provider === 'elevenlabs') {
+      providers.push({ name: 'elevenlabs', instance: new ElevenLabsTTS(settings) })
+    }
+  }
+
+  // Start from configured provider, fallback to web-speech
+  const startIdx = settings.tts_provider === 'openai-tts' && settings.tts_api_key ? 1
+    : settings.tts_provider === 'elevenlabs' && settings.tts_api_key ? (providers.length > 2 ? 2 : 1)
+    : 0
+
+  return new RoundRobinTTS(providers, startIdx)
 }
 
-export function createTTSProvider(settings: UserSettings) {
-  switch (settings.tts_provider) {
-    case 'web-speech-synthesis': return new WebSpeechTTS(settings)
-    case 'openai-tts': return new OpenAITTS(settings)
-    case 'elevenlabs': return new ElevenLabsTTS(settings)
-    case 'none': return new SilentTTS()
-    default: return new WebSpeechTTS(settings)
-  }
-}
+// Legacy
+export function createTTSProvider(settings: UserSettings) { return createRoundRobinTTS(settings) }
