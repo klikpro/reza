@@ -164,27 +164,29 @@ export default function Landing() {
       ctx.stroke()
     }
 
-    // ── Rotating scanner arc ───────────────────────────────
-    ctx.save()
-    ctx.translate(cx, cy)
-    ctx.rotate(t * 0.35)
-    const scanGrad = ctx.createConicalGradient
-      ? (ctx as any).createConicalGradient(0, 0, 0)
-      : null
-    if (!scanGrad) {
-      // Fallback: arc with gradient alpha
+    // ── Rotating scanner arc (standard canvas only) ───────
+    {
       const arcR = 148 * pulse
-      ctx.beginPath()
-      ctx.moveTo(0, 0)
-      ctx.arc(0, 0, arcR, -0.2, 0.9)
-      ctx.closePath()
-      ctx.fillStyle = `rgba(14,165,233,${0.04 + avg * 0.04})`
-      ctx.fill()
+      const startAngle = t * 0.35
+      const sweepAngle = Math.PI * 0.55
+      ctx.save()
+      ctx.translate(cx, cy)
+      const slices = 24
+      for (let s = 0; s < slices; s++) {
+        const a0 = startAngle + (s / slices) * sweepAngle
+        const a1 = startAngle + ((s + 1) / slices) * sweepAngle
+        const alpha = (s / slices) * (0.06 + avg * 0.05)
+        ctx.beginPath()
+        ctx.moveTo(0, 0)
+        ctx.arc(0, 0, arcR, a0, a1)
+        ctx.closePath()
+        ctx.fillStyle = `rgba(14,165,233,${alpha})`
+        ctx.fill()
+      }
+      ctx.restore()
     }
-    ctx.restore()
 
     // ── Inner core – clean white circle ───────────────────
-    // Outer glow ring
     const coreGlow = ctx.createRadialGradient(cx, cy, 18, cx, cy, 44 * pulse)
     coreGlow.addColorStop(0, `rgba(14,165,233,${0.12 + avg * 0.15})`)
     coreGlow.addColorStop(1, 'rgba(14,165,233,0)')
@@ -211,7 +213,7 @@ export default function Landing() {
     ctx.stroke()
 
     // ── Corner bracket HUD decorations ────────────────────
-    const brackets = [
+    const brackets: [number, number, number, number][] = [
       [cx - 290, cy - 290, 1, 1],
       [cx + 290, cy - 290, -1, 1],
       [cx - 290, cy + 290, 1, -1],
@@ -342,7 +344,6 @@ export default function Landing() {
 
       {/* ── Header ── */}
       <header className="absolute top-0 left-0 right-0 flex items-center justify-between px-8 py-5 z-20">
-        {/* Logo + name */}
         <div className="flex items-center gap-3">
           {branding?.logo_url ? (
             <img src={branding.logo_url} alt="logo" className="w-7 h-7 object-contain" />
@@ -368,7 +369,6 @@ export default function Landing() {
           </span>
         </div>
 
-        {/* Nav */}
         <nav className="flex items-center gap-3">
           {user ? (
             <button
@@ -453,7 +453,6 @@ export default function Landing() {
         transition={{ duration: 0.3 }}
       >
         <div className="flex items-center gap-2">
-          {/* Status dot */}
           <motion.span
             className="rounded-full"
             style={{
@@ -461,18 +460,16 @@ export default function Landing() {
               background: phaseColor[phase],
               boxShadow: `0 0 6px ${phaseColor[phase]}`,
             }}
-            animate={phase !== 'idle'
-              ? { opacity: [1, 0.3, 1] }
-              : { opacity: 1 }}
+            animate={phase !== 'idle' ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
             transition={{ repeat: phase !== 'idle' ? Infinity : 0, duration: 1 }}
           />
           <span
-            className="text-sm font-medium tracking-wide"
             style={{
               color: phaseColor[phase],
               fontFamily: '"DM Mono", monospace',
               fontSize: 12,
               letterSpacing: '0.06em',
+              fontWeight: 500,
             }}
           >
             {phaseLabel[phase].toUpperCase()}
@@ -535,7 +532,7 @@ export default function Landing() {
         </div>
 
         {!user && (
-          <p className="text-xs flex items-center gap-1" style={{ color: '#94a3b8', fontFamily: '"DM Mono", monospace', fontSize: 10 }}>
+          <p className="flex items-center gap-1" style={{ color: '#94a3b8', fontFamily: '"DM Mono", monospace', fontSize: 10 }}>
             <Lock size={9} />
             LOGIN UNTUK FITUR PENUH
           </p>
@@ -561,25 +558,10 @@ function HUDStat({ icon, label, value, active }: {
   return (
     <div className="flex items-center gap-1.5">
       <span style={{ color: active ? '#0ea5e9' : '#94a3b8' }}>{icon}</span>
-      <span
-        style={{
-          fontFamily: '"DM Mono", monospace',
-          fontSize: 9,
-          letterSpacing: '0.08em',
-          color: '#94a3b8',
-        }}
-      >
+      <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.08em', color: '#94a3b8' }}>
         {label}
       </span>
-      <span
-        style={{
-          fontFamily: '"DM Mono", monospace',
-          fontSize: 9,
-          letterSpacing: '0.06em',
-          color: active ? '#0ea5e9' : '#64748b',
-          fontWeight: 600,
-        }}
-      >
+      <span style={{ fontFamily: '"DM Mono", monospace', fontSize: 9, letterSpacing: '0.06em', color: active ? '#0ea5e9' : '#64748b', fontWeight: 600 }}>
         {value}
       </span>
     </div>
