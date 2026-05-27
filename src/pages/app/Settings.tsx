@@ -4,9 +4,55 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 import { useBrandingStore } from '@/store/useBrandingStore'
 import { themes, applyTheme } from '@/styles/themes'
 import { toast } from '@/components/ui/Toaster'
-import type { ThemeName, UserSettings } from '@/types'
-import { Eye, EyeOff, Check, Mic, Volume2, Brain, Palette, User, Info, Image } from 'lucide-react'
+import type { ThemeName, UserSettings, ProviderKeys } from '@/types'
+import { Eye, EyeOff, Check, Mic, Volume2, Brain, User, Info, Image } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import ProviderKeyManager from '@/components/ui/ProviderKeyManager'
+import type { ProviderDef } from '@/components/ui/ProviderKeyManager'
+
+const AI_PROVIDERS: ProviderDef[] = [
+  { id: 'openai-gpt4o', emoji: '🤖', label: 'OpenAI GPT-4o', description: 'Model terbaik OpenAI, multimodal', keyPlaceholder: 'sk-...' },
+  { id: 'openai-gpt4o-mini', emoji: '🤖', label: 'OpenAI GPT-4o Mini', description: 'Lebih cepat & murah', keyPlaceholder: 'sk-...' },
+  { id: 'openai-gpt4-turbo', emoji: '🤖', label: 'OpenAI GPT-4 Turbo', description: 'Konteks panjang 128K', keyPlaceholder: 'sk-...' },
+  { id: 'openai-o1-mini', emoji: '🧠', label: 'OpenAI o1 Mini', description: 'Model reasoning terbaru', keyPlaceholder: 'sk-...' },
+  { id: 'anthropic-claude-opus', emoji: '🔮', label: 'Anthropic Claude Opus', description: 'Model terkuat Anthropic', keyPlaceholder: 'sk-ant-...' },
+  { id: 'anthropic-claude-sonnet', emoji: '🔮', label: 'Anthropic Claude Sonnet', description: 'Keseimbangan kecepatan & kualitas', keyPlaceholder: 'sk-ant-...' },
+  { id: 'anthropic-claude-haiku', emoji: '🔮', label: 'Anthropic Claude Haiku', description: 'Paling cepat dari Anthropic', keyPlaceholder: 'sk-ant-...' },
+  { id: 'google-gemini-pro', emoji: '🔷', label: 'Google Gemini 1.5 Pro', description: 'Konteks hingga 2 juta token', keyPlaceholder: 'AIza...' },
+  { id: 'google-gemini-flash', emoji: '🔷', label: 'Google Gemini 1.5 Flash', description: 'Cepat & efisien dari Google', keyPlaceholder: 'AIza...' },
+  { id: 'groq-llama3', emoji: '⚡', label: 'Groq LLaMA 3.1 70B', description: 'Inferensi super cepat, tier gratis', keyPlaceholder: 'gsk_...' },
+  { id: 'groq-mixtral', emoji: '⚡', label: 'Groq Mixtral 8x7B', description: 'MoE model via Groq', keyPlaceholder: 'gsk_...' },
+  { id: 'mistral-large', emoji: '🌀', label: 'Mistral Large', description: 'Model unggulan Mistral AI', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'deepseek-chat', emoji: '🐋', label: 'DeepSeek Chat', description: 'Model open-source terbaik China', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'perplexity', emoji: '🔍', label: 'Perplexity AI', description: 'AI dengan akses internet realtime', keyPlaceholder: 'pplx-...' },
+  { id: 'together-ai', emoji: '🤝', label: 'Together AI', description: '50+ model open-source terpusat', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'ollama', emoji: '🦙', label: 'Ollama (Lokal)', description: 'Jalankan LLM di perangkat sendiri', freeKey: true },
+]
+
+const STT_PROVIDERS: ProviderDef[] = [
+  { id: 'web-speech-api', emoji: '🌐', label: 'Web Speech API', description: 'Built-in browser, gratis tanpa key', freeKey: true },
+  { id: 'openai-whisper', emoji: '🤖', label: 'OpenAI Whisper', description: 'Akurasi tinggi, multi bahasa', keyPlaceholder: 'sk-...' },
+  { id: 'groq-whisper', emoji: '⚡', label: 'Groq Whisper', description: 'Whisper via Groq, sangat cepat', keyPlaceholder: 'gsk_...' },
+  { id: 'deepgram', emoji: '🎙️', label: 'Deepgram', description: 'Real-time STT berkecepatan tinggi', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'assemblyai', emoji: '📝', label: 'AssemblyAI', description: 'STT + analisis audio canggih', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'azure-speech', emoji: '☁️', label: 'Azure Speech', description: 'Microsoft Azure Cognitive Services', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'google-cloud-stt', emoji: '🔵', label: 'Google Cloud STT', description: 'Google Speech-to-Text API', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'elevenlabs-stt', emoji: '🎵', label: 'ElevenLabs STT', description: 'STT dari ElevenLabs', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'rev-ai', emoji: '📻', label: 'Rev AI', description: 'STT akurasi tinggi dari Rev', keyPlaceholder: 'Masukkan API Key...' },
+]
+
+const TTS_PROVIDERS: ProviderDef[] = [
+  { id: 'web-speech-synthesis', emoji: '🌐', label: 'Web Speech Synthesis', description: 'Built-in browser, gratis tanpa key', freeKey: true },
+  { id: 'elevenlabs', emoji: '🎵', label: 'ElevenLabs', description: 'Suara paling realistis saat ini', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'openai-tts', emoji: '🤖', label: 'OpenAI TTS', description: 'Text-to-speech dari OpenAI', keyPlaceholder: 'sk-...' },
+  { id: 'google-cloud-tts', emoji: '🔵', label: 'Google Cloud TTS', description: 'Neural voices dari Google', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'azure-tts', emoji: '☁️', label: 'Azure Neural TTS', description: '400+ neural voices dari Microsoft', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'amazon-polly', emoji: '📦', label: 'Amazon Polly', description: 'TTS dari AWS dengan banyak bahasa', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'playht', emoji: '▶️', label: 'PlayHT', description: 'Voice cloning & realistic TTS', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'cartesia', emoji: '🎭', label: 'Cartesia AI', description: 'Real-time ultra-low latency TTS', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'deepgram-tts', emoji: '🎙️', label: 'Deepgram TTS', description: 'TTS cepat dari Deepgram', keyPlaceholder: 'Masukkan API Key...' },
+  { id: 'none', emoji: '🔇', label: 'Silent Mode', description: 'Tidak ada suara output', freeKey: true },
+]
 
 const TABS = ['Tampilan', 'Suara', 'AI', 'Branding', 'Akun', 'Tentang']
 
@@ -20,6 +66,16 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [brandingForm, setBrandingForm] = useState({ site_name: '', accent_color: '#06b6d4', logo_url: '' })
   const [uploadingLogo, setUploadingLogo] = useState(false)
+
+  // Multi-key maps
+  const parseKeys = (raw?: string): ProviderKeys => { try { return raw ? JSON.parse(raw) : {} } catch { return {} } }
+  const aiKeys = parseKeys(form.ai_keys)
+  const sttKeys = parseKeys(form.stt_keys)
+  const ttsKeys = parseKeys(form.tts_keys)
+
+  const saveAiKeys = (keys: ProviderKeys) => save({ ai_keys: JSON.stringify(keys) })
+  const saveSttKeys = (keys: ProviderKeys) => save({ stt_keys: JSON.stringify(keys) })
+  const saveTtsKeys = (keys: ProviderKeys) => save({ tts_keys: JSON.stringify(keys) })
 
   useEffect(() => {
     if (user) fetchSettings(user.id)
@@ -156,59 +212,36 @@ export default function Settings() {
 
       {/* Tab 1: Suara */}
       {tab === 1 && (
-        <div className="space-y-6">
-          {/* STT */}
-          <section className="card p-5 space-y-4">
-            <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-              <Mic size={18} style={{ color: 'var(--accent)' }} /> Voice Input (STT)
-            </h2>
-            {sel('stt_provider', 'Provider', [
-              ['web-speech-api', '🌐 Web Speech API (Gratis)'],
-              ['openai-whisper', '🤖 OpenAI Whisper (Berbayar)'],
-              ['deepgram', '🎙 Deepgram (Berbayar)'],
-              ['assemblyai', '📝 AssemblyAI (Berbayar)'],
-              ['azure-speech', '☁️ Azure Speech (Berbayar)'],
-              ['google-cloud-stt', '🔵 Google Cloud STT (Berbayar)'],
+        <div className="space-y-4">
+          <ProviderKeyManager
+            title="Voice Input (STT)"
+            icon={<Mic size={16} style={{ color: 'var(--accent)' }} />}
+            providers={STT_PROVIDERS}
+            activeProvider={form.stt_provider || 'web-speech-api'}
+            keys={sttKeys}
+            onActivate={id => save({ stt_provider: id as any })}
+            onKeysChange={saveSttKeys}
+          />
+          <section className="card p-4 space-y-3">
+            <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>👂 Wake Word</h2>
+            {sel('wake_word_provider', 'Mode', [
+              ['none', '🔇 Tidak Aktif'], ['browser-keyword', '🌐 Keyword'], ['hotkey', '⌨️ Shortcut']
             ])}
-            {form.stt_provider !== 'web-speech-api' && inp('stt_api_key', 'API Key', 'password', 'Masukkan API Key...')}
-            {inp('stt_language', 'Bahasa (BCP-47)', 'text', 'id-ID')}
-          </section>
-
-          {/* Wake Word */}
-          <section className="card p-5 space-y-4">
-            <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-              👂 Wake Word
-            </h2>
-            {sel('wake_word_provider', 'Provider', [
-              ['none', '🔇 Tidak Aktif (Manual)'],
-              ['browser-keyword', '🌐 Browser Keyword Spotting'],
-              ['hotkey', '⌨️ Keyboard Shortcut'],
-            ])}
-            {form.wake_word_provider === 'browser-keyword' && (
-              <>
-                {inp('wake_word_custom', 'Kata Kunci', 'text', 'hey memory')}
-                {slid('wake_word_sensitivity', 'Sensitivitas', 0, 1)}
-              </>
-            )}
+            {form.wake_word_provider === 'browser-keyword' && (<>{inp('wake_word_custom', 'Kata Kunci', 'text', 'hey memory')}{slid('wake_word_sensitivity', 'Sensitivitas', 0, 1)}</>)}
             {form.wake_word_provider === 'hotkey' && inp('wake_word_key', 'Kombinasi Tombol', 'text', 'ctrl+shift+m')}
           </section>
-
-          {/* TTS */}
-          <section className="card p-5 space-y-4">
-            <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-              <Volume2 size={18} style={{ color: 'var(--accent)' }} /> Text-to-Speech (TTS)
-            </h2>
-            {sel('tts_provider', 'Provider', [
-              ['web-speech-synthesis', '🌐 Web Speech Synthesis (Gratis)'],
-              ['elevenlabs', '🎵 ElevenLabs (Berbayar)'],
-              ['openai-tts', '🤖 OpenAI TTS (Berbayar)'],
-              ['google-cloud-tts', '🔵 Google Cloud TTS (Berbayar)'],
-              ['azure-tts', '☁️ Azure Neural TTS (Berbayar)'],
-              ['none', '🔇 Tidak Ada (Silent Mode)'],
-            ])}
-            {form.tts_provider !== 'web-speech-synthesis' && form.tts_provider !== 'none' && (
-              inp('tts_api_key', 'API Key', 'password', 'Masukkan API Key...')
-            )}
+          <ProviderKeyManager
+            title="Text-to-Speech (TTS)"
+            icon={<Volume2 size={16} style={{ color: 'var(--accent)' }} />}
+            providers={TTS_PROVIDERS}
+            activeProvider={form.tts_provider || 'web-speech-synthesis'}
+            keys={ttsKeys}
+            onActivate={id => save({ tts_provider: id as any })}
+            onKeysChange={saveTtsKeys}
+          />
+          <section className="card p-4 space-y-3">
+            <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>🔊 Pengaturan Suara</h2>
+            {inp('stt_language', 'Bahasa STT (BCP-47)', 'text', 'id-ID')}
             {inp('tts_voice_id', 'Voice ID / URI', 'text', 'ID suara (opsional)')}
             {slid('tts_rate', 'Kecepatan', 0.5, 2)}
             {slid('tts_pitch', 'Nada (Pitch)', 0, 2)}
@@ -219,40 +252,44 @@ export default function Settings() {
 
       {/* Tab 2: AI */}
       {tab === 2 && (
-        <div className="space-y-6">
-          <section className="card p-5">
-            <div className="flex items-center justify-between mb-4">
+        <div className="space-y-4">
+          {/* Toggle */}
+          <section className="card p-4">
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  <Brain size={18} style={{ color: 'var(--accent)' }} /> Aktifkan AI
+                <h2 className="flex items-center gap-2 text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                  <Brain size={16} style={{ color: 'var(--accent)' }} /> Aktifkan AI
                 </h2>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  Semantic search & answer synthesis dengan LLM
-                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Semantic search & answer synthesis dengan LLM</p>
               </div>
-              <button
-                onClick={() => save({ ai_enabled: !form.ai_enabled })}
-                className="relative w-12 h-6 rounded-full transition-colors"
-                style={{ background: form.ai_enabled ? 'var(--accent)' : 'var(--bg-tertiary)' }}>
-                <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
-                  style={{ transform: form.ai_enabled ? 'translateX(24px)' : 'translateX(0)' }} />
+              <button onClick={() => save({ ai_enabled: !form.ai_enabled })}
+                className="relative w-11 h-6 rounded-full transition-colors"
+                style={{ background: form.ai_enabled ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
+                <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm"
+                  style={{ transform: form.ai_enabled ? 'translateX(20px)' : 'translateX(0)' }} />
               </button>
             </div>
+          </section>
 
-            {form.ai_enabled && (
-              <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-                {sel('ai_provider', 'Answer Synthesis Provider', [
-                  ['openai-gpt4o', '🤖 OpenAI GPT-4o (Direkomendasikan)'],
-                  ['openai-gpt4o-mini', '🤖 OpenAI GPT-4o Mini (Lebih Murah)'],
-                  ['anthropic-claude', '🔮 Anthropic Claude 3 Haiku'],
-                  ['google-gemini', '🔷 Google Gemini Flash'],
-                  ['groq', '⚡ Groq LLaMA 3 (Gratis tier)'],
-                ])}
-                {inp('ai_api_key', 'API Key AI', 'password', 'sk-...')}
+          {form.ai_enabled && (
+            <>
+              <ProviderKeyManager
+                title="AI Provider & API Keys"
+                icon={<Brain size={16} style={{ color: 'var(--accent)' }} />}
+                providers={AI_PROVIDERS}
+                activeProvider={form.ai_provider || 'openai-gpt4o'}
+                keys={aiKeys}
+                onActivate={id => save({ ai_provider: id as any })}
+                onKeysChange={saveAiKeys}
+              />
+              <section className="card p-4 space-y-3">
+                <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>⚙️ Pengaturan Lanjutan</h2>
                 {sel('embedding_provider', 'Embedding Provider', [
-                  ['openai-small', '🤖 OpenAI text-embedding-3-small (Direkomendasikan)'],
+                  ['openai-small', '🤖 OpenAI text-embedding-3-small'],
                   ['openai-large', '🤖 OpenAI text-embedding-3-large'],
                   ['cohere', '🟣 Cohere embed-multilingual-v3'],
+                  ['huggingface', '🤗 HuggingFace (gratis)'],
+                  ['voyage', '🚀 Voyage AI'],
                 ])}
                 {slid('similarity_threshold', 'Similarity Threshold', 0.5, 0.95, 0.05)}
                 {slid('max_memories_retrieve', 'Maks Memories Diambil', 1, 10, 1)}
@@ -263,9 +300,9 @@ export default function Settings() {
                     onChange={e => setForm(f => ({ ...f, system_prompt: e.target.value }))}
                     onBlur={() => save({ system_prompt: form.system_prompt })} />
                 </div>
-              </div>
-            )}
-          </section>
+              </section>
+            </>
+          )}
         </div>
       )}
 

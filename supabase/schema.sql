@@ -144,8 +144,13 @@ returns trigger as $$
 begin new.updated_at = now(); return new; end;
 $$ language plpgsql;
 
+drop trigger if exists update_memories_updated_at on memories;
 create trigger update_memories_updated_at before update on memories for each row execute function update_updated_at_column();
+
+drop trigger if exists update_user_settings_updated_at on user_settings;
 create trigger update_user_settings_updated_at before update on user_settings for each row execute function update_updated_at_column();
+
+drop trigger if exists update_templates_updated_at on conversation_templates;
 create trigger update_templates_updated_at before update on conversation_templates for each row execute function update_updated_at_column();
 
 -- ================================================
