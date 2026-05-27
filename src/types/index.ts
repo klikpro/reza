@@ -36,6 +36,7 @@ export interface UserSettings {
   theme: ThemeName
   stt_provider: STTProvider
   stt_api_key?: string
+  stt_keys?: string        // JSON: Record<STTProvider, string[]>
   stt_language?: string
   stt_model?: string
   wake_word_provider: WakeWordProvider
@@ -44,6 +45,7 @@ export interface UserSettings {
   wake_word_sensitivity: number
   tts_provider: TTSProvider
   tts_api_key?: string
+  tts_keys?: string        // JSON: Record<TTSProvider, string[]>
   tts_voice_id?: string
   tts_rate?: number
   tts_pitch?: number
@@ -52,6 +54,7 @@ export interface UserSettings {
   ai_enabled: boolean
   ai_provider: AIProvider
   ai_api_key?: string
+  ai_keys?: string         // JSON: Record<AIProvider, string[]>
   embedding_provider?: EmbeddingProvider
   embedding_api_key?: string
   similarity_threshold: number
@@ -64,6 +67,9 @@ export interface UserSettings {
   language: 'id' | 'en'
   updated_at: string
 }
+
+// Multi-key map helper
+export type ProviderKeys = Record<string, string[]>
 
 export type ThemeName =
   | 'bright-glass'
@@ -85,11 +91,13 @@ export type ThemeName =
 export type STTProvider =
   | 'web-speech-api'
   | 'openai-whisper'
+  | 'groq-whisper'
   | 'deepgram'
   | 'assemblyai'
   | 'azure-speech'
   | 'google-cloud-stt'
   | 'elevenlabs-stt'
+  | 'rev-ai'
 
 export type WakeWordProvider =
   | 'none'
@@ -106,14 +114,31 @@ export type TTSProvider =
   | 'amazon-polly'
   | 'playht'
   | 'murf'
+  | 'cartesia'
+  | 'deepgram-tts'
   | 'none'
 
 export type AIProvider =
   | 'openai-gpt4o'
   | 'openai-gpt4o-mini'
-  | 'anthropic-claude'
-  | 'google-gemini'
-  | 'groq'
+  | 'openai-gpt4-turbo'
+  | 'openai-o1-mini'
+  | 'anthropic-claude-opus'
+  | 'anthropic-claude-sonnet'
+  | 'anthropic-claude-haiku'
+  | 'google-gemini-pro'
+  | 'google-gemini-flash'
+  | 'google-gemini-nano'
+  | 'groq-llama3'
+  | 'groq-mixtral'
+  | 'groq-gemma'
+  | 'mistral-large'
+  | 'mistral-medium'
+  | 'cohere-command-r'
+  | 'deepseek-chat'
+  | 'perplexity'
+  | 'together-ai'
+  | 'ollama'
 
 export type EmbeddingProvider =
   | 'openai-small'
