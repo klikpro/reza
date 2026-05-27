@@ -2,29 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 /* ================================================
-   CSS VARIABLES (Set by theme system)
+   CSS VARIABLES — Default: Bright White Glassmorphism
    ================================================ */
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --bg-tertiary: #1a1a28;
-  --bg-card: #12121a;
-  --bg-hover: #1e1e2e;
-  --accent: #7c5cfc;
-  --accent-light: #9d7dff;
-  --accent-dark: #5a3fd0;
-  --text-primary: #e2e2ff;
-  --text-secondary: #a0a0c0;
-  --text-muted: #606080;
-  --border: #2a2a40;
-  --border-light: #3a3a55;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --error: #f87171;
-  --shadow: 0 4px 24px rgba(124,92,252,0.15);
+  --bg-primary: linear-gradient(135deg, #f0f9ff 0%, #e8f4ff 35%, #f3f0ff 70%, #fff0f9 100%);
+  --bg-secondary: rgba(255, 255, 255, 0.65);
+  --bg-tertiary: rgba(241, 245, 249, 0.85);
+  --bg-card: rgba(255, 255, 255, 0.72);
+  --bg-hover: rgba(6, 182, 212, 0.06);
+  --accent: #06b6d4;
+  --accent-light: #22d3ee;
+  --accent-dark: #0891b2;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border: rgba(6, 182, 212, 0.18);
+  --border-light: rgba(6, 182, 212, 0.08);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --shadow: 0 4px 24px rgba(6, 182, 212, 0.12);
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(255,255,255,0.8);
   --font-primary: 'Inter', system-ui, sans-serif;
-  --glass-blur: 0px;
+  --glass-blur: 16px;
   --neon-glow: none;
 }
 
@@ -43,13 +46,15 @@ html {
 
 body {
   font-family: var(--font-primary);
-  background-color: var(--bg-primary);
+  background: var(--bg-primary);
+  background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  color-scheme: light;
+  transition: background 0.4s ease, color 0.3s ease;
 }
 
 /* ================================================
@@ -60,10 +65,11 @@ html.theme-light {
   color-scheme: light;
 }
 
-html.theme-glass .glass-card {
-  backdrop-filter: blur(var(--glass-blur, 12px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 12px));
-  border: 1px solid var(--border);
+/* Glassmorphism applies everywhere by default */
+.glass-card,
+.card {
+  backdrop-filter: blur(var(--glass-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
 }
 
 html.theme-cyberpunk *,
@@ -103,13 +109,15 @@ html.theme-terminal .neon {
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card, 0 2px 16px rgba(0,0,0,0.06));
+  transition: border-color 0.2s ease, box-shadow 0.25s ease, transform 0.2s ease;
 }
 
 .card:hover {
-  border-color: var(--border-light);
-  box-shadow: var(--shadow);
+  border-color: rgba(6,182,212,0.3);
+  box-shadow: 0 8px 32px rgba(6,182,212,0.14), 0 0 0 1px rgba(255,255,255,0.9);
+  transform: translateY(-1px);
 }
 
 .btn-primary {
@@ -133,7 +141,7 @@ html.theme-terminal .neon {
 }
 
 .btn-secondary {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.7);
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -144,29 +152,32 @@ html.theme-terminal .neon {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  backdrop-filter: blur(8px);
 }
 
 .btn-secondary:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-light);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(6, 182, 212, 0.15);
 }
 
 .input-field {
-  background: var(--bg-secondary);
+  background: rgba(255, 255, 255, 0.8);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 0.625rem 1rem;
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   width: 100%;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   outline: none;
   font-family: var(--font-primary);
+  backdrop-filter: blur(8px);
 }
 
 .input-field:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.1);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
 }
 
 .input-field::placeholder {

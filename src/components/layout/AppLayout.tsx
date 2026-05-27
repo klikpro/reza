@@ -11,7 +11,7 @@ export default function AppLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)', backgroundAttachment: 'fixed' }}>
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
 
@@ -21,7 +21,7 @@ export default function AppLayout() {
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
           onCommandPalette={() => setCommandPaletteOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto page-enter" style={{ background: 'var(--bg-primary)' }}>
+        <main className="flex-1 overflow-y-auto page-enter" style={{ background: 'transparent' }}>
           <Outlet />
         </main>
       </div>

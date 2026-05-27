@@ -22,58 +22,67 @@ export default function Header({ onMenuToggle, onCommandPalette }: HeaderProps) 
 
   return (
     <header
-      className="h-16 border-b flex items-center gap-4 px-4 flex-shrink-0 z-10"
-      style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
+      className="h-12 border-b flex items-center gap-3 px-4 flex-shrink-0 z-10"
+      style={{
+        background: 'rgba(255,255,255,0.75)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderColor: 'rgba(6,182,212,0.12)',
+        boxShadow: '0 1px 12px rgba(0,0,0,0.04)',
+      }}
     >
       {/* Menu toggle (mobile) */}
       <button
         onClick={onMenuToggle}
-        className="md:hidden p-2 rounded-lg"
+        className="md:hidden p-1.5 rounded-lg transition-colors hover:bg-white/80"
         style={{ color: 'var(--text-secondary)' }}
       >
-        <Menu size={20} />
+        <Menu size={18} />
       </button>
 
       {/* Search bar */}
       <button
         onClick={onCommandPalette}
-        className="flex items-center gap-2 flex-1 max-w-md px-3 py-2 rounded-lg border text-sm transition-colors"
+        className="flex items-center gap-2 flex-1 max-w-sm px-3 py-1.5 rounded-xl border text-sm transition-all hover:border-cyan-300 hover:shadow-sm"
         style={{
-          background: 'var(--bg-primary)',
-          borderColor: 'var(--border)',
+          background: 'rgba(255,255,255,0.8)',
+          backdropFilter: 'blur(8px)',
+          borderColor: 'rgba(6,182,212,0.18)',
           color: 'var(--text-muted)',
         }}
       >
-        <Search size={15} />
-        <span>Cari ingatan... </span>
-        <kbd className="ml-auto text-xs px-1.5 py-0.5 rounded border hidden sm:inline-flex items-center"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-tertiary)' }}>
+        <Search size={13} style={{ color: 'var(--accent)' }} />
+        <span className="text-xs">Cari ingatan...</span>
+        <kbd
+          className="ml-auto text-xs px-1.5 py-0.5 rounded-md border hidden sm:inline-flex items-center"
+          style={{ borderColor: 'rgba(6,182,212,0.2)', background: 'rgba(6,182,212,0.06)', color: 'var(--accent)', fontSize: 10 }}
+        >
           ⌘K
         </kbd>
       </button>
 
       {/* Right side */}
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="flex items-center gap-1.5 ml-auto">
         {/* Online status */}
         {!online && (
           <div className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
-            style={{ background: 'rgba(248,113,113,0.15)', color: 'var(--error)' }}>
-            <WifiOff size={12} />
+            style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--error)' }}>
+            <WifiOff size={11} />
             <span className="hidden sm:inline">Offline</span>
           </div>
         )}
         {online && (
-          <div className="p-1.5 rounded-full" style={{ color: 'var(--text-muted)' }} title="Online">
-            <Wifi size={16} />
+          <div className="p-1.5 rounded-full" style={{ color: 'rgba(16,185,129,0.7)' }} title="Online">
+            <Wifi size={14} />
           </div>
         )}
 
         {/* Notifications */}
         <button
-          className="relative p-2 rounded-lg transition-colors"
-          style={{ color: 'var(--text-secondary)' }}
+          className="relative p-1.5 rounded-lg transition-colors hover:bg-white/80"
+          style={{ color: 'var(--text-muted)' }}
         >
-          <Bell size={18} />
+          <Bell size={16} />
         </button>
       </div>
     </header>
