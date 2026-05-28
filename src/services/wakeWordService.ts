@@ -14,9 +14,27 @@ export class BrowserKeywordSpotting {
   private keyword: string
   private onDetected: OnDetectedCallback | null = null
   private active = false
+  private cooldown = false
 
   constructor(keyword = 'hey memory', _sensitivity = 0.5) {
-    this.keyword = keyword.toLowerCase()
+    this.keyword = keyword.toLowerCase().trim()
+  }
+
+  private normalize(text: string): string {
+    return text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private matches(transcript: string): boolean {
+    const norm = this.normalize(transcript)
+    const kw = this.normalize(this.keyword)
+    // exact substring match
+    if (norm.includes(kw)) return true
+    // fuzzy: split keyword into words, check if all words present
+    const kwWords = kw.split(' ')
+    return kwWords.every(w => norm.includes(w))
   }
 
   start(onDetected: OnDetectedCallback): boolean {
@@ -25,14 +43,23 @@ export class BrowserKeywordSpotting {
 
     this.onDetected = onDetected
     this.active = true
+    this.cooldown = false
     this.recognition = new SR()
     this.recognition.continuous = true
     this.recognition.interimResults = true
+    this.recognition.lang = 'id-ID'
 
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (this.cooldown) return
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript.toLowerCase()
-        if (text.includes(this.keyword)) this.onDetected?.()
+        const text = event.results[i][0].transcript
+        if (this.matches(text)) {
+          this.cooldown = true
+          this.onDetected?.()
+          // reset cooldown after 3s to allow re-trigger
+          setTimeout(() => { this.cooldown = false }, 3000)
+          break
+        }
       }
     }
 
@@ -47,6 +74,7 @@ export class BrowserKeywordSpotting {
 
   stop(): void {
     this.active = false
+    this.cooldown = false
     try { this.recognition?.abort() } catch {}
     this.recognition = null
   }
