@@ -88,8 +88,8 @@ export default function Landing() {
     let avg = 0.06 + 0.04 * Math.sin(t * 1.2)
 
     if (analyserRef.current) {
-      freqData = new Uint8Array(analyserRef.current.frequencyBinCount)
-      timeData = new Uint8Array(analyserRef.current.frequencyBinCount)
+      freqData = new Uint8Array(new ArrayBuffer(analyserRef.current.frequencyBinCount))
+      timeData = new Uint8Array(new ArrayBuffer(analyserRef.current.frequencyBinCount))
       analyserRef.current.getByteFrequencyData(freqData)
       analyserRef.current.getByteTimeDomainData(timeData)
       let rms = 0
