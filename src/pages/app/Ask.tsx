@@ -38,8 +38,47 @@ export default function Ask() {
       setWakeProvider(provider)
       const ok = provider.start(() => {
         setWakeDetected(true)
-        startListening()
         setTimeout(() => setWakeDetected(false), 2000)
+
+        // Bunyikan greeting dari settings sebelum mulai listening
+        const mode = settings.wake_word_response_mode || 'greeting+chime'
+        const greeting = settings.wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'
+        const lang = settings.wake_word_language || 'id-ID'
+        const useChime = settings.wake_word_listening_sound !== false
+
+        // Chime
+        if ((mode === 'chime' || mode === 'greeting+chime') && useChime) {
+          try {
+            const ctx = new AudioContext()
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            osc.connect(gain); gain.connect(ctx.destination)
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(880, ctx.currentTime)
+            osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3)
+            gain.gain.setValueAtTime(0.4, ctx.currentTime)
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+            osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
+            osc.onended = () => ctx.close()
+          } catch {}
+        }
+
+        // Greeting TTS — tunggu chime selesai dulu
+        const greetingDelay = (mode === 'greeting+chime' && useChime) ? 450 : 0
+        if (mode === 'greeting' || mode === 'greeting+chime') {
+          setTimeout(() => {
+            window.speechSynthesis.cancel()
+            const utt = new SpeechSynthesisUtterance(greeting)
+            utt.lang = lang; utt.rate = 1.0; utt.pitch = 1.1; utt.volume = 0.9
+            window.speechSynthesis.speak(utt)
+          }, greetingDelay)
+        }
+
+        // Mulai listening setelah greeting selesai (estimasi durasi greeting)
+        const listeningDelay = mode === 'silent' ? 0
+          : mode === 'chime' ? 500
+          : greeting.length * 60 + greetingDelay  // ~60ms per karakter
+        setTimeout(() => startListening(), listeningDelay)
       })
       if (!ok) toast('Wake word tidak dapat diaktifkan', 'error')
     } else {
@@ -48,7 +87,7 @@ export default function Ask() {
     }
 
     return () => { wakeProvider?.stop() }
-  }, [wakeWordActive, settings?.wake_word_provider])
+  }, [wakeWordActive, settings?.wake_word_provider, settings?.wake_word_response_mode, settings?.wake_word_greeting])
 
   const startListening = useCallback(async () => {
     setPhase('listening')
