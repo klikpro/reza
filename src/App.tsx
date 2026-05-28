@@ -14,6 +14,7 @@ import Memories from '@/pages/app/Memories'
 import Categories from '@/pages/app/Categories'
 import Settings from '@/pages/app/Settings'
 import Ask from '@/pages/app/Ask'
+import Conversation from '@/pages/app/Conversation'
 import Templates from '@/pages/app/Templates'
 import { Toaster } from '@/components/ui/Toaster'
 
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="categories" element={<Categories />} />
           <Route path="settings" element={<Settings />} />
           <Route path="ask" element={<Ask />} />
+          <Route path="conversation" element={<Conversation />} />
           <Route path="templates" element={<Templates />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

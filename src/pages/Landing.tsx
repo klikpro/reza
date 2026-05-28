@@ -343,18 +343,15 @@ export default function Landing() {
       const stt = createRoundRobinSTT(settings)
       sttRef.current = stt
       let final = ''
+      let silenceTimer: ReturnType<typeof setTimeout> | null = null
 
-      stt.start(
-        (r) => {
-          if (r.isFinal) { final += r.transcript + ' '; setTranscript(final) }
-          else setTranscript(final + r.transcript)
-        },
-        () => {}
-      )
-
-      setTimeout(async () => {
+      const processFinal = async () => {
         stt.stop()
-        if (!final.trim()) { setPhase('idle'); resolve(); return }
+        if (!final.trim()) {
+          // Tidak ada input — langsung dengarkan lagi
+          resolve()
+          return
+        }
         setPhase('processing')
         if (!user) { setPhase('idle'); resolve(); return }
         const result = await answerQuery(final.trim(), user.id, settings, memories)
@@ -362,17 +359,59 @@ export default function Landing() {
         setPhase('speaking')
         const tts = createRoundRobinTTS(settings)
         await tts.speak(result.answer)
-        setPhase('idle')
         setAnswer('')
-        resolve() // sesi selesai, wake word bisa diaktifkan kembali
-      }, 7000)
+        // Loop: langsung dengarkan lagi tanpa perlu wake word
+        resolve()
+      }
+
+      stt.start(
+        (r) => {
+          if (r.isFinal) {
+            final += r.transcript + ' '
+            setTranscript(final)
+          } else {
+            setTranscript(final + r.transcript)
+          }
+          // Reset timer setiap ada input suara
+          if (silenceTimer) clearTimeout(silenceTimer)
+          silenceTimer = setTimeout(processFinal, 2000)
+        },
+        () => {}
+      )
+
+      // Fallback: jika 10 detik tidak ada suara sama sekali
+      setTimeout(() => {
+        if (!final.trim()) { stt.stop(); setPhase('idle'); resolve() }
+      }, 10000)
     })
   }, [settings, user, memories, micAllowed, startVisualizer])
 
+  // Loop percakapan — setelah resolve, langsung dengerin lagi
+  const conversationLoopRef = useRef(false)
+
+  const startConversationLoop = useCallback(async () => {
+    conversationLoopRef.current = true
+    while (conversationLoopRef.current) {
+      await startListening()
+      // Jeda kecil antar giliran agar tidak langsung overlap
+      await new Promise(r => setTimeout(r, 300))
+    }
+  }, [startListening])
+
   const handleMicClick = () => {
     if (!user) { navigate('/login'); return }
-    if (phase === 'listening') return
-    startListening()
+    // Jika sedang aktif loop, stop
+    if (phase === 'listening' || phase === 'speaking' || phase === 'processing') {
+      conversationLoopRef.current = false
+      sttRef.current?.stop()
+      window.speechSynthesis?.cancel()
+      setPhase('idle')
+      setTranscript('')
+      setAnswer('')
+      return
+    }
+    conversationLoopRef.current = false
+    startConversationLoop()
   }
 
   const wakeWord = settings?.wake_word_custom || 'hey memory'

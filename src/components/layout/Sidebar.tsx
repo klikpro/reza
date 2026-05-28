@@ -21,6 +21,7 @@ const navItems = [
   { to: '/app/categories', label: 'Kategori', icon: Tag },
   { to: '/app/templates', label: 'Template', icon: MessageSquare },
   { to: '/app/ask', label: 'Tanya AI', icon: Mic },
+  { to: '/app/conversation', label: 'Percakapan', icon: Brain },
   { to: '/app/settings', label: 'Pengaturan', icon: Settings },
 ]
 
