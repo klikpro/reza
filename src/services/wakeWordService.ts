@@ -24,16 +24,20 @@ export class BrowserKeywordSpotting {
     return text.toLowerCase()
       .replace(/[^a-z0-9\s]/g, '')
       .replace(/\s+/g, ' ')
+      // samakan variasi ejaan umum
+      .replace(/\bhallo\b/g, 'halo')
+      .replace(/\bhello\b/g, 'halo')
+      .replace(/\bhey\b/g, 'halo')
+      .replace(/\bhai\b/g, 'halo')
       .trim()
   }
 
   private matches(transcript: string): boolean {
     const norm = this.normalize(transcript)
     const kw = this.normalize(this.keyword)
-    // exact substring match
     if (norm.includes(kw)) return true
-    // fuzzy: split keyword into words, check if all words present
-    const kwWords = kw.split(' ')
+    // fuzzy: semua kata keyword harus ada
+    const kwWords = kw.split(' ').filter(Boolean)
     return kwWords.every(w => norm.includes(w))
   }
 
