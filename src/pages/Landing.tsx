@@ -263,99 +263,110 @@ export default function Landing() {
 
   // ── Wake word listener ────────────────────────────────────
   useEffect(() => {
-    console.log('[WakeWord] useEffect fired', {
-      hasSettings: !!settings,
-      provider: settings?.wake_word_provider,
-      keyword: settings?.wake_word_custom,
-      hasUser: !!user,
-    })
+    if (!settings || settings.wake_word_provider === 'none') return
 
-    if (!settings || settings.wake_word_provider === 'none') {
-      console.warn('[WakeWord] Aborted — provider is none or settings missing')
-      return
+    const mode = settings.wake_word_response_mode || 'greeting+chime'
+    const greeting = settings.wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'
+    const useChime = settings.wake_word_listening_sound !== false
+
+    let active = true // tracking apakah effect ini masih hidup
+
+    const startWakeListener = () => {
+      if (!active) return
+      const provider = createWakeWordProvider(settings)
+      wakeRef.current = provider
+      setWakeActive(true)
+
+      provider.start(async () => {
+        if (!active) return
+
+        // 1. Stop listener — jangan dengar wake word saat proses berlangsung
+        provider.stop()
+        wakeRef.current = null
+        setWakeActive(false)
+        setPhase('wake')
+
+        await startVisualizer()
+
+        // 2. Chime
+        if ((mode === 'chime' || mode === 'greeting+chime') && useChime) {
+          try {
+            const actx = new AudioContext()
+            const osc = actx.createOscillator()
+            const gain = actx.createGain()
+            osc.connect(gain); gain.connect(actx.destination)
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(880, actx.currentTime)
+            osc.frequency.exponentialRampToValueAtTime(440, actx.currentTime + 0.3)
+            gain.gain.setValueAtTime(0.4, actx.currentTime)
+            gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.4)
+            osc.start(actx.currentTime); osc.stop(actx.currentTime + 0.4)
+            osc.onended = () => actx.close()
+          } catch {}
+        }
+
+        // 3. Greeting TTS — tunggu selesai (await)
+        if (mode === 'greeting' || mode === 'greeting+chime') {
+          const delay = (mode === 'greeting+chime' && useChime) ? 450 : 0
+          await new Promise(r => setTimeout(r, delay))
+          await speak(greeting)
+        }
+
+        // 4. Dengarkan perintah user — tunggu selesai (await)
+        if (user && active) {
+          await startListening()
+        }
+
+        // 5. Sesi selesai — resume wake word listener
+        if (active) startWakeListener()
+      })
     }
 
-    const provider = createWakeWordProvider(settings)
-    console.log('[WakeWord] Provider created:', provider.constructor.name)
-
-    wakeRef.current = provider
-    const started = provider.start(async () => {
-      console.log('[WakeWord] ✅ Keyword detected! Starting greeting...')
-      setPhase('wake')
-      await startVisualizer()
-
-      const mode = settings.wake_word_response_mode || 'greeting+chime'
-      const greeting = settings.wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'
-      const useChime = settings.wake_word_listening_sound !== false
-
-      // Chime
-      if ((mode === 'chime' || mode === 'greeting+chime') && useChime) {
-        try {
-          const actx = new AudioContext()
-          const osc = actx.createOscillator()
-          const gain = actx.createGain()
-          osc.connect(gain); gain.connect(actx.destination)
-          osc.type = 'sine'
-          osc.frequency.setValueAtTime(880, actx.currentTime)
-          osc.frequency.exponentialRampToValueAtTime(440, actx.currentTime + 0.3)
-          gain.gain.setValueAtTime(0.4, actx.currentTime)
-          gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.4)
-          osc.start(actx.currentTime); osc.stop(actx.currentTime + 0.4)
-          osc.onended = () => actx.close()
-        } catch {}
-      }
-
-      // Greeting TTS dari settings
-      if (mode === 'greeting' || mode === 'greeting+chime') {
-        const delay = (mode === 'greeting+chime' && useChime) ? 450 : 0
-        await new Promise(r => setTimeout(r, delay))
-        await speak(greeting)
-      }
-      if (user) {
-        setTimeout(() => startListening(), 400)
-      }
-    })
-    console.log('[WakeWord] provider.start() returned:', started)
-    setWakeActive(true)
+    startWakeListener()
 
     return () => {
-      console.log('[WakeWord] Cleanup — stopping provider')
-      provider.stop()
+      active = false
+      wakeRef.current?.stop()
+      wakeRef.current = null
       setWakeActive(false)
     }
   }, [user, settings?.wake_word_provider, settings?.wake_word_custom, settings?.wake_word_response_mode, settings?.wake_word_greeting, settings?.wake_word_listening_sound])
 
-  const startListening = useCallback(async () => {
-    if (!settings) return
-    setPhase('listening')
-    setTranscript('')
-    setAnswer('')
-    if (!micAllowed) await startVisualizer()
+  const startListening = useCallback((): Promise<void> => {
+    if (!settings) return Promise.resolve()
+    return new Promise(async (resolve) => {
+      setPhase('listening')
+      setTranscript('')
+      setAnswer('')
+      if (!micAllowed) await startVisualizer()
 
-    const stt = createRoundRobinSTT(settings)
-    sttRef.current = stt
-    let final = ''
+      const stt = createRoundRobinSTT(settings)
+      sttRef.current = stt
+      let final = ''
 
-    stt.start(
-      (r) => {
-        if (r.isFinal) { final += r.transcript + ' '; setTranscript(final) }
-        else setTranscript(final + r.transcript)
-      },
-      () => {}
-    )
+      stt.start(
+        (r) => {
+          if (r.isFinal) { final += r.transcript + ' '; setTranscript(final) }
+          else setTranscript(final + r.transcript)
+        },
+        () => {}
+      )
 
-    setTimeout(async () => {
-      stt.stop()
-      if (!final.trim()) { setPhase('idle'); return }
-      setPhase('processing')
-      if (!user) { setPhase('idle'); return }
-      const result = await answerQuery(final.trim(), user.id, settings, memories)
-      setAnswer(result.answer)
-      setPhase('speaking')
-      const tts = createRoundRobinTTS(settings)
-      await tts.speak(result.answer)
-      setPhase('idle')
-    }, 7000)
+      setTimeout(async () => {
+        stt.stop()
+        if (!final.trim()) { setPhase('idle'); resolve(); return }
+        setPhase('processing')
+        if (!user) { setPhase('idle'); resolve(); return }
+        const result = await answerQuery(final.trim(), user.id, settings, memories)
+        setAnswer(result.answer)
+        setPhase('speaking')
+        const tts = createRoundRobinTTS(settings)
+        await tts.speak(result.answer)
+        setPhase('idle')
+        setAnswer('')
+        resolve() // sesi selesai, wake word bisa diaktifkan kembali
+      }, 7000)
+    })
   }, [settings, user, memories, micAllowed, startVisualizer])
 
   const handleMicClick = () => {
