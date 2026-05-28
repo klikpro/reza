@@ -13,15 +13,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 type Phase = 'idle' | 'wake' | 'listening' | 'processing' | 'speaking'
 
-// ── Elegant HUD ring data ──────────────────────────────────
+// ── Orb ring config: radius, dash, speed, base opacity ────
 const RINGS = [
-  { r: 52,  w: 0.8, dashArr: 4,  dashGap: 6,  speed: 0.18,  opacity: 0.25 },
-  { r: 80,  w: 1.2, dashArr: 8,  dashGap: 4,  speed: -0.12, opacity: 0.35 },
-  { r: 114, w: 0.6, dashArr: 2,  dashGap: 10, speed: 0.22,  opacity: 0.20 },
-  { r: 148, w: 1.5, dashArr: 16, dashGap: 6,  speed: -0.08, opacity: 0.45 },
-  { r: 185, w: 0.8, dashArr: 3,  dashGap: 8,  speed: 0.15,  opacity: 0.18 },
-  { r: 220, w: 1.0, dashArr: 24, dashGap: 8,  speed: -0.10, opacity: 0.30 },
-  { r: 260, w: 0.5, dashArr: 1,  dashGap: 12, speed: 0.20,  opacity: 0.12 },
+  { r: 60,  w: 0.6, dashArr: 3,  dashGap: 8,  speed:  0.14, opacity: 0.18 },
+  { r: 95,  w: 1.0, dashArr: 10, dashGap: 5,  speed: -0.09, opacity: 0.28 },
+  { r: 135, w: 0.5, dashArr: 2,  dashGap: 12, speed:  0.18, opacity: 0.14 },
+  { r: 172, w: 1.2, dashArr: 18, dashGap: 7,  speed: -0.07, opacity: 0.22 },
+  { r: 210, w: 0.4, dashArr: 1,  dashGap: 14, speed:  0.11, opacity: 0.09 },
+  { r: 248, w: 0.8, dashArr: 22, dashGap: 9,  speed: -0.06, opacity: 0.12 },
 ]
 
 export default function Landing() {
@@ -61,7 +60,7 @@ export default function Landing() {
     } catch { /* fallback */ }
   }, [])
 
-  // ── Canvas HUD renderer ───────────────────────────────────
+  // ── Canvas HUD renderer — clean voice orb ───────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -83,162 +82,161 @@ export default function Landing() {
 
     ctx.clearRect(0, 0, W, H)
 
-    // Get audio or simulate
-    let dataArray: Uint8Array
-    let avg = 0.15 + 0.08 * Math.sin(t * 1.4)
+    // ── Audio data ─────────────────────────────────────────
+    let freqData: Uint8Array
+    let timeData: Uint8Array
+    let avg = 0.06 + 0.04 * Math.sin(t * 1.2)
+
     if (analyserRef.current) {
-      const buf = new Uint8Array(analyserRef.current.frequencyBinCount)
-      analyserRef.current.getByteFrequencyData(buf)
-      dataArray = buf
-      avg = buf.reduce((a, b) => a + b, 0) / buf.length / 255
+      freqData = new Uint8Array(analyserRef.current.frequencyBinCount)
+      timeData = new Uint8Array(analyserRef.current.frequencyBinCount)
+      analyserRef.current.getByteFrequencyData(freqData)
+      analyserRef.current.getByteTimeDomainData(timeData)
+      let rms = 0
+      for (let i = 0; i < timeData.length; i++) {
+        const v = (timeData[i] - 128) / 128
+        rms += v * v
+      }
+      avg = Math.sqrt(rms / timeData.length)
     } else {
-      dataArray = new Uint8Array(256).map((_, i) =>
-        Math.floor(60 * Math.abs(Math.sin(t * 1.2 + i * 0.12)))
+      freqData = new Uint8Array(128).map((_, i) =>
+        Math.floor(40 * Math.abs(Math.sin(t * 0.9 + i * 0.15)))
       )
+      timeData = new Uint8Array(128).fill(128)
     }
 
     const isActive = phase === 'listening' || phase === 'speaking'
-    const pulse = 1 + avg * (isActive ? 0.06 : 0.02)
+    // smooth pulse: idle breathes softly, active reacts to sound
+    const breathe = 1 + 0.025 * Math.sin(t * 1.8)
+    const pulse = isActive ? breathe + avg * 0.18 : breathe
 
-    // ── Subtle outer ambient glow ──────────────────────────
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.55)
-    glow.addColorStop(0, `rgba(14,165,233,${0.04 + avg * 0.04})`)
-    glow.addColorStop(0.6, `rgba(14,165,233,0.02)`)
-    glow.addColorStop(1, 'rgba(14,165,233,0)')
-    ctx.fillStyle = glow
+    // ── Ambient radial glow (very subtle, grey-blue) ───────
+    const ambientR = 280
+    const ambient = ctx.createRadialGradient(cx, cy, 0, cx, cy, ambientR)
+    const ambAlpha = 0.04 + avg * 0.06
+    ambient.addColorStop(0,   `rgba(120,180,220,${ambAlpha})`)
+    ambient.addColorStop(0.5, `rgba(80,120,160,${ambAlpha * 0.4})`)
+    ambient.addColorStop(1,   'rgba(0,0,0,0)')
+    ctx.fillStyle = ambient
     ctx.fillRect(0, 0, W, H)
 
-    // ── Dashed / segmented rings ───────────────────────────
+    // ── Rotating dashed rings ──────────────────────────────
+    ctx.setLineDash([])
     RINGS.forEach(({ r, w, dashArr, dashGap, speed, opacity }) => {
       const rot = t * speed
+      const alpha = Math.min(opacity + avg * 0.22, 0.55)
       ctx.save()
       ctx.translate(cx, cy)
       ctx.rotate(rot)
       ctx.beginPath()
       ctx.arc(0, 0, r * pulse, 0, Math.PI * 2)
-      const alpha = opacity + avg * 0.15
-      ctx.strokeStyle = `rgba(14,165,233,${Math.min(alpha, 0.7)})`
+      ctx.strokeStyle = `rgba(160,200,230,${alpha})`
       ctx.lineWidth = w
       ctx.setLineDash([dashArr, dashGap])
       ctx.stroke()
       ctx.restore()
     })
+    ctx.setLineDash([])
 
-    // ── Frequency bars (radial, elegant thin lines) ────────
-    const barCount = Math.min(dataArray.length, 96)
+    // ── Radial frequency bars ──────────────────────────────
+    const barCount = 80
+    const innerR = 72 * pulse
+    const maxBarH = isActive ? 52 : 18
     for (let i = 0; i < barCount; i++) {
       const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2
-      const val = dataArray[i] / 255
-      const innerR = 88 * pulse
-      const maxBar = isActive ? 48 : 22
-      const outerR = innerR + val * maxBar
-      const x1 = cx + Math.cos(angle) * innerR
-      const y1 = cy + Math.sin(angle) * innerR
-      const x2 = cx + Math.cos(angle) * outerR
-      const y2 = cy + Math.sin(angle) * outerR
-      const alpha = 0.25 + val * (isActive ? 0.7 : 0.4)
+      const fi = Math.floor((i / barCount) * freqData.length * 0.65)
+      const val = freqData[fi] / 255
+      const outerR = innerR + val * maxBarH
+      const isMaj = i % 10 === 0
+      const baseAlpha = isMaj ? 0.35 : 0.18
+      const alpha = Math.min(baseAlpha + val * (isActive ? 0.55 : 0.3), 0.75)
+      // colour: white for major, grey-blue for minor
+      const rgb = isMaj ? '220,235,245' : '180,210,230'
       ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.strokeStyle = `rgba(14,165,233,${alpha})`
-      ctx.lineWidth = 1.2
-      ctx.setLineDash([])
+      ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR)
+      ctx.lineTo(cx + Math.cos(angle) * outerR, cy + Math.sin(angle) * outerR)
+      ctx.strokeStyle = `rgba(${rgb},${alpha})`
+      ctx.lineWidth = isMaj ? 1.5 : 0.8
       ctx.stroke()
     }
 
-    // ── Crosshair ticks (cardinal) ─────────────────────────
-    for (let i = 0; i < 4; i++) {
-      const angle = (i / 4) * Math.PI * 2
-      const r1 = 148 * pulse
-      const r2 = r1 + 18
-      const x1 = cx + Math.cos(angle) * r1
-      const y1 = cy + Math.sin(angle) * r1
-      const x2 = cx + Math.cos(angle) * r2
-      const y2 = cy + Math.sin(angle) * r2
+    // ── 72 tick marks at outermost ring ───────────────────
+    const tickR = 172 * pulse
+    for (let i = 0; i < 72; i++) {
+      const angle = (i / 72) * Math.PI * 2 - Math.PI / 2
+      const isMaj = i % 6 === 0
+      const fi = Math.floor((i / 72) * freqData.length * 0.5)
+      const fv = freqData[fi] / 255
+      const tickLen = (isMaj ? 10 : 5) + (isActive ? fv * 10 : 0)
+      const r0 = tickR
+      const r1 = tickR - tickLen
       ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.strokeStyle = `rgba(14,165,233,0.55)`
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([])
+      ctx.moveTo(cx + Math.cos(angle) * r0, cy + Math.sin(angle) * r0)
+      ctx.lineTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1)
+      ctx.strokeStyle = isMaj
+        ? `rgba(200,225,245,${0.4 + avg * 0.35})`
+        : `rgba(160,185,210,${0.18 + avg * 0.18})`
+      ctx.lineWidth = isMaj ? 1.2 : 0.6
       ctx.stroke()
     }
 
-    // ── Rotating scanner arc (standard canvas only) ───────
-    {
-      const arcR = 148 * pulse
-      const startAngle = t * 0.35
-      const sweepAngle = Math.PI * 0.55
-      ctx.save()
-      ctx.translate(cx, cy)
-      const slices = 24
-      for (let s = 0; s < slices; s++) {
-        const a0 = startAngle + (s / slices) * sweepAngle
-        const a1 = startAngle + ((s + 1) / slices) * sweepAngle
-        const alpha = (s / slices) * (0.06 + avg * 0.05)
-        ctx.beginPath()
-        ctx.moveTo(0, 0)
-        ctx.arc(0, 0, arcR, a0, a1)
-        ctx.closePath()
-        ctx.fillStyle = `rgba(14,165,233,${alpha})`
-        ctx.fill()
+    // ── Wave blob outline (reacts to time-domain data) ─────
+    if (isActive && avg > 0.01) {
+      const waveR = 76
+      const wavePts = 64
+      ctx.beginPath()
+      for (let i = 0; i <= wavePts; i++) {
+        const angle = (i / wavePts) * Math.PI * 2 - Math.PI / 2
+        const ti = Math.floor((i / wavePts) * timeData.length)
+        const tv = (timeData[ti] - 128) / 128
+        const r = waveR * pulse + tv * avg * 22
+        const x = cx + Math.cos(angle) * r
+        const y = cy + Math.sin(angle) * r
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
       }
-      ctx.restore()
-    }
-
-    // ── Inner core – clean white circle ───────────────────
-    const coreGlow = ctx.createRadialGradient(cx, cy, 18, cx, cy, 44 * pulse)
-    coreGlow.addColorStop(0, `rgba(14,165,233,${0.12 + avg * 0.15})`)
-    coreGlow.addColorStop(1, 'rgba(14,165,233,0)')
-    ctx.beginPath()
-    ctx.arc(cx, cy, 44 * pulse, 0, Math.PI * 2)
-    ctx.fillStyle = coreGlow
-    ctx.fill()
-
-    // White core circle
-    ctx.beginPath()
-    ctx.arc(cx, cy, 26 * pulse, 0, Math.PI * 2)
-    ctx.fillStyle = `rgba(255,255,255,${0.92 + avg * 0.06})`
-    ctx.shadowColor = 'rgba(14,165,233,0.4)'
-    ctx.shadowBlur = 20
-    ctx.fill()
-    ctx.shadowBlur = 0
-
-    // Core ring border
-    ctx.beginPath()
-    ctx.arc(cx, cy, 26 * pulse, 0, Math.PI * 2)
-    ctx.strokeStyle = `rgba(14,165,233,${0.5 + avg * 0.4})`
-    ctx.lineWidth = 1.2
-    ctx.setLineDash([])
-    ctx.stroke()
-
-    // ── Corner bracket HUD decorations ────────────────────
-    const brackets: [number, number, number, number][] = [
-      [cx - 290, cy - 290, 1, 1],
-      [cx + 290, cy - 290, -1, 1],
-      [cx - 290, cy + 290, 1, -1],
-      [cx + 290, cy + 290, -1, -1],
-    ]
-    brackets.forEach(([bx, by, sx, sy]) => {
-      const len = 18
-      const a = 0.15 + avg * 0.1
-      ctx.strokeStyle = `rgba(14,165,233,${a})`
+      ctx.closePath()
+      ctx.strokeStyle = `rgba(180,220,255,${Math.min(avg * 3, 0.45)})`
       ctx.lineWidth = 1
-      ctx.setLineDash([])
-      ctx.beginPath()
-      ctx.moveTo(bx + sx * len, by)
-      ctx.lineTo(bx, by)
-      ctx.lineTo(bx, by + sy * len)
       ctx.stroke()
-    })
-
-    // ── Phase state overlay text ───────────────────────────
-    if (phase === 'wake') {
-      ctx.font = '500 11px "DM Mono", monospace'
-      ctx.fillStyle = `rgba(14,165,233,0.7)`
-      ctx.textAlign = 'center'
-      ctx.fillText('WAKE WORD DETECTED', cx, cy + 72)
     }
+
+    // ── Core sphere glow halo ──────────────────────────────
+    const haloR = 58 * pulse
+    const halo = ctx.createRadialGradient(cx, cy, haloR * 0.3, cx, cy, haloR)
+    halo.addColorStop(0, `rgba(140,195,230,${0.08 + avg * 0.12})`)
+    halo.addColorStop(1, 'rgba(100,160,210,0)')
+    ctx.beginPath()
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2)
+    ctx.fillStyle = halo
+    ctx.fill()
+
+    // ── Core sphere — white with glass sheen ───────────────
+    const coreR = 32 * pulse
+    // base fill: slightly blue-white
+    const coreFill = ctx.createRadialGradient(
+      cx - coreR * 0.28, cy - coreR * 0.28, coreR * 0.05,
+      cx, cy, coreR
+    )
+    coreFill.addColorStop(0, `rgba(255,255,255,${0.97 + avg * 0.03})`)
+    coreFill.addColorStop(0.55, `rgba(215,235,250,${0.92})`)
+    coreFill.addColorStop(1, `rgba(140,185,220,${0.82})`)
+    ctx.beginPath()
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2)
+    ctx.fillStyle = coreFill
+    ctx.fill()
+
+    // glass sheen top-left
+    ctx.beginPath()
+    ctx.arc(cx - coreR * 0.18, cy - coreR * 0.18, coreR * 0.38, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(255,255,255,0.38)`
+    ctx.fill()
+
+    // outer ring of core
+    ctx.beginPath()
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(160,210,240,${0.45 + avg * 0.45})`
+    ctx.lineWidth = 1
+    ctx.stroke()
 
     rafRef.current = requestAnimationFrame(draw)
   }, [phase])
