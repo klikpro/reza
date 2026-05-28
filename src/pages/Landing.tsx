@@ -275,9 +275,6 @@ export default function Landing() {
       return
     }
 
-    const userName = user?.full_name?.split(' ')[0] || 'Reza'
-    const siteName_ = branding?.site_name || 'KlikPro RME'
-
     const provider = createWakeWordProvider(settings)
     console.log('[WakeWord] Provider created:', provider.constructor.name)
 
@@ -286,11 +283,34 @@ export default function Landing() {
       console.log('[WakeWord] ✅ Keyword detected! Starting greeting...')
       setPhase('wake')
       await startVisualizer()
-      await speak(
-        `Halo ${userName}! Saya asisten AI ${siteName_}. ` +
-        `Saya siap membantu Anda mengelola rekam medis. ` +
-        `Silakan ucapkan perintah Anda setelah ini.`
-      )
+
+      const mode = settings.wake_word_response_mode || 'greeting+chime'
+      const greeting = settings.wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'
+      const useChime = settings.wake_word_listening_sound !== false
+
+      // Chime
+      if ((mode === 'chime' || mode === 'greeting+chime') && useChime) {
+        try {
+          const actx = new AudioContext()
+          const osc = actx.createOscillator()
+          const gain = actx.createGain()
+          osc.connect(gain); gain.connect(actx.destination)
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(880, actx.currentTime)
+          osc.frequency.exponentialRampToValueAtTime(440, actx.currentTime + 0.3)
+          gain.gain.setValueAtTime(0.4, actx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.4)
+          osc.start(actx.currentTime); osc.stop(actx.currentTime + 0.4)
+          osc.onended = () => actx.close()
+        } catch {}
+      }
+
+      // Greeting TTS dari settings
+      if (mode === 'greeting' || mode === 'greeting+chime') {
+        const delay = (mode === 'greeting+chime' && useChime) ? 450 : 0
+        await new Promise(r => setTimeout(r, delay))
+        await speak(greeting)
+      }
       if (user) {
         setTimeout(() => startListening(), 400)
       }
@@ -303,7 +323,7 @@ export default function Landing() {
       provider.stop()
       setWakeActive(false)
     }
-  }, [user, settings?.wake_word_provider, settings?.wake_word_custom])
+  }, [user, settings?.wake_word_provider, settings?.wake_word_custom, settings?.wake_word_response_mode, settings?.wake_word_greeting, settings?.wake_word_listening_sound])
 
   const startListening = useCallback(async () => {
     if (!settings) return
