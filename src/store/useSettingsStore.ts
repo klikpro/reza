@@ -66,8 +66,12 @@ export const useSettingsStore = create<SettingsState>()(
           set({ settings: defaults, loading: false })
           applyTheme(defaults.theme)
         } else {
-          set({ settings: data as UserSettings, loading: false })
-          applyTheme(data.theme as ThemeName)
+          // Merge dengan default agar field baru (wake word, dll) tidak undefined
+          // jika kolom belum ada di DB lama / migration belum dijalankan
+          const defaults = createDefaultSettings(userId)
+          const merged: UserSettings = { ...defaults, ...data } as UserSettings
+          set({ settings: merged, loading: false })
+          applyTheme((merged.theme ?? defaults.theme) as ThemeName)
         }
       },
 
@@ -80,9 +84,33 @@ export const useSettingsStore = create<SettingsState>()(
           applyTheme(updates.theme)
         }
 
-        await supabase
+        // Hanya kirim kolom yang benar-benar ada di tabel user_settings
+        // Field seperti stt_keys, ai_keys, tts_keys tidak ada di DB → menyebabkan upsert gagal diam-diam
+        const DB_COLUMNS = [
+          'user_id', 'theme',
+          'stt_provider', 'stt_api_key', 'stt_language', 'stt_model', 'stt_keys',
+          'wake_word_provider', 'wake_word_key', 'wake_word_custom', 'wake_word_sensitivity',
+          'wake_word_response_mode', 'wake_word_greeting', 'wake_word_listening_sound',
+          'wake_word_confirm_sound', 'wake_word_timeout', 'wake_word_auto_submit', 'wake_word_language',
+          'tts_provider', 'tts_api_key', 'tts_voice_id', 'tts_rate', 'tts_pitch', 'tts_volume', 'tts_model', 'tts_keys',
+          'ai_enabled', 'ai_provider', 'ai_api_key', 'ai_keys',
+          'embedding_provider', 'embedding_api_key',
+          'similarity_threshold', 'max_memories_retrieve', 'system_prompt',
+          'default_view', 'sidebar_mode', 'font_size', 'animation', 'language',
+          'updated_at',
+        ]
+        const payload = Object.fromEntries(
+          Object.entries({ ...updated, user_id: userId })
+            .filter(([key]) => DB_COLUMNS.includes(key))
+        )
+
+        const { error } = await supabase
           .from('user_settings')
-          .upsert([{ ...updated, user_id: userId }])
+          .upsert([payload])
+
+        if (error) {
+          console.error('[useSettingsStore] upsert error:', error.message, error.details)
+        }
       },
 
       setTheme: (theme) => {
@@ -94,7 +122,9 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'memoryvault-settings',
-      partialize: (state) => ({ settings: state.settings }),
+      // Sengaja tidak cache settings di localStorage agar selalu ambil dari Supabase
+      // Ini mencegah nilai lama (greeting default, dll) override data terbaru dari DB
+      partialize: () => ({}),
     }
   )
 )
