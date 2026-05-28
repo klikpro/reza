@@ -4,7 +4,7 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 import { useBrandingStore } from '@/store/useBrandingStore'
 import { toast } from '@/components/ui/Toaster'
 import type { UserSettings, ProviderKeys } from '@/types'
-import { Eye, EyeOff, Mic, Volume2, Brain, User, Info, Image } from 'lucide-react'
+import { Eye, EyeOff, Mic, Volume2, Brain, User, Info, Image, Radio, Bell, Clock, Zap, Languages } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import ProviderKeyManager from '@/components/ui/ProviderKeyManager'
 import type { ProviderDef } from '@/components/ui/ProviderKeyManager'
@@ -176,13 +176,186 @@ export default function Settings() {
             onActivate={id => save({ stt_provider: id as any })}
             onKeysChange={saveSttKeys}
           />
-          <section className="card p-4 space-y-3">
-            <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>👂 Wake Word</h2>
-            {sel('wake_word_provider', 'Mode', [
-              ['none', '🔇 Tidak Aktif'], ['browser-keyword', '🌐 Keyword'], ['hotkey', '⌨️ Shortcut']
+          <section className="card p-4 space-y-4">
+            <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <Radio size={15} style={{ color: 'var(--accent)' }} /> Wake Word
+            </h2>
+
+            {/* Mode */}
+            {sel('wake_word_provider', 'Mode Aktivasi', [
+              ['none', '🔇 Tidak Aktif'],
+              ['browser-keyword', '🌐 Keyword / Kata Kunci'],
+              ['hotkey', '⌨️ Keyboard Shortcut'],
             ])}
-            {form.wake_word_provider === 'browser-keyword' && (<>{inp('wake_word_custom', 'Kata Kunci', 'text', 'hey memory')}{slid('wake_word_sensitivity', 'Sensitivitas', 0, 1)}</>)}
-            {form.wake_word_provider === 'hotkey' && inp('wake_word_key', 'Kombinasi Tombol', 'text', 'ctrl+shift+m')}
+
+            {/* Keyword config */}
+            {form.wake_word_provider === 'browser-keyword' && (
+              <>
+                {inp('wake_word_custom', 'Kata Kunci Wake Word', 'text', 'hey memory')}
+                {slid('wake_word_sensitivity', 'Sensitivitas Deteksi', 0, 1)}
+              </>
+            )}
+
+            {/* Hotkey config */}
+            {form.wake_word_provider === 'hotkey' && (
+              inp('wake_word_key', 'Kombinasi Tombol', 'text', 'ctrl+shift+m')
+            )}
+
+            {/* ── Jawaban / Respons Wake Word ── */}
+            {form.wake_word_provider !== 'none' && (
+              <>
+                <hr style={{ borderColor: 'var(--border)' }} />
+                <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Pengaturan Jawaban</h3>
+
+                {/* Response mode */}
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Bell size={12} className="inline mr-1" /> Mode Respons
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ['silent',         '🔇 Diam saja'],
+                      ['chime',          '🔔 Bunyi chime'],
+                      ['greeting',       '💬 Ucapan sapaan'],
+                      ['greeting+chime', '🔔💬 Chime + Sapaan'],
+                    ] as [string, string][]).map(([v, l]) => (
+                      <button key={v}
+                        onClick={() => save({ wake_word_response_mode: v as any })}
+                        className="px-3 py-2 rounded-lg text-xs font-medium border transition-all text-left"
+                        style={{
+                          borderColor: (form as any).wake_word_response_mode === v ? 'var(--accent)' : 'var(--border)',
+                          background: (form as any).wake_word_response_mode === v ? 'rgba(var(--accent-rgb,6 182 212)/.12)' : 'transparent',
+                          color: (form as any).wake_word_response_mode === v ? 'var(--accent)' : 'var(--text-secondary)',
+                        }}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Greeting text */}
+                {((form as any).wake_word_response_mode === 'greeting' || (form as any).wake_word_response_mode === 'greeting+chime') && (
+                  <div>
+                    <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                      💬 Teks Sapaan
+                    </label>
+                    <input
+                      type="text"
+                      value={(form as any).wake_word_greeting || ''}
+                      onChange={e => setForm(f => ({ ...f, wake_word_greeting: e.target.value }))}
+                      onBlur={() => save({ wake_word_greeting: (form as any).wake_word_greeting } as any)}
+                      placeholder="Halo! Ada yang bisa saya bantu?"
+                      className="input-field"
+                    />
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Teks ini akan diucapkan via TTS saat wake word terdeteksi.
+                    </p>
+                  </div>
+                )}
+
+                {/* Bahasa wake word */}
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Languages size={12} className="inline mr-1" /> Bahasa Mendengarkan
+                  </label>
+                  <input
+                    type="text"
+                    value={(form as any).wake_word_language || 'id-ID'}
+                    onChange={e => setForm(f => ({ ...f, wake_word_language: e.target.value }))}
+                    onBlur={() => save({ wake_word_language: (form as any).wake_word_language } as any)}
+                    placeholder="id-ID"
+                    className="input-field"
+                  />
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Kode BCP-47, contoh: id-ID, en-US, ms-MY
+                  </p>
+                </div>
+
+                {/* Timeout */}
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Clock size={12} className="inline mr-1" /> Timeout Mendengarkan:{' '}
+                    <span style={{ color: 'var(--accent)' }}>{(form as any).wake_word_timeout ?? 10}s</span>
+                  </label>
+                  <input type="range" min={3} max={60} step={1}
+                    value={(form as any).wake_word_timeout ?? 10}
+                    onChange={e => setForm(f => ({ ...f, wake_word_timeout: parseInt(e.target.value) }))}
+                    onMouseUp={() => save({ wake_word_timeout: (form as any).wake_word_timeout } as any)}
+                    className="w-full accent-[var(--accent)]" />
+                  <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    <span>3s</span><span>60s</span>
+                  </div>
+                </div>
+
+                {/* Toggle: suara mendengarkan */}
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      🎵 Suara saat mulai mendengarkan
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Bunyi pendek ketika masuk mode input</p>
+                  </div>
+                  <button onClick={() => save({ wake_word_listening_sound: !(form as any).wake_word_listening_sound } as any)}
+                    className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+                    style={{ background: (form as any).wake_word_listening_sound ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
+                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
+                      style={{ transform: (form as any).wake_word_listening_sound ? 'translateX(20px)' : 'translateX(0)' }} />
+                  </button>
+                </div>
+
+                {/* Toggle: suara konfirmasi */}
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      ✅ Suara konfirmasi selesai
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Bunyi saat input selesai diproses</p>
+                  </div>
+                  <button onClick={() => save({ wake_word_confirm_sound: !(form as any).wake_word_confirm_sound } as any)}
+                    className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+                    style={{ background: (form as any).wake_word_confirm_sound ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
+                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
+                      style={{ transform: (form as any).wake_word_confirm_sound ? 'translateX(16px)' : 'translateX(0)' }} />
+                  </button>
+                </div>
+
+                {/* Toggle: auto-submit */}
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      <Zap size={12} className="inline mr-1" />Auto-submit setelah diam
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Kirim otomatis jika tidak ada suara selama timeout</p>
+                  </div>
+                  <button onClick={() => save({ wake_word_auto_submit: !(form as any).wake_word_auto_submit } as any)}
+                    className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+                    style={{ background: (form as any).wake_word_auto_submit ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
+                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
+                      style={{ transform: (form as any).wake_word_auto_submit ? 'translateX(16px)' : 'translateX(0)' }} />
+                  </button>
+                </div>
+
+                {/* Preview box */}
+                <div className="rounded-xl p-3 space-y-1" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                  <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>📋 Ringkasan Konfigurasi</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Trigger: <strong>{form.wake_word_provider === 'browser-keyword' ? `"${form.wake_word_custom || 'hey memory'}"` : form.wake_word_key || 'ctrl+shift+m'}</strong>
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Respons: <strong>{(form as any).wake_word_response_mode || 'greeting+chime'}</strong>
+                  </p>
+                  {((form as any).wake_word_response_mode === 'greeting' || (form as any).wake_word_response_mode === 'greeting+chime') && (
+                    <p className="text-xs italic" style={{ color: 'var(--accent)' }}>
+                      "{(form as any).wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'}"
+                    </p>
+                  )}
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Timeout: <strong>{(form as any).wake_word_timeout ?? 10}s</strong> ·{' '}
+                    Bahasa: <strong>{(form as any).wake_word_language || 'id-ID'}</strong>
+                  </p>
+                </div>
+              </>
+            )}
           </section>
           <ProviderKeyManager
             title="Text-to-Speech (TTS)"

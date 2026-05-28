@@ -43,6 +43,13 @@ export interface UserSettings {
   wake_word_key?: string
   wake_word_custom: string
   wake_word_sensitivity: number
+  wake_word_response_mode: WakeWordResponseMode
+  wake_word_greeting?: string
+  wake_word_listening_sound: boolean
+  wake_word_confirm_sound: boolean
+  wake_word_timeout: number
+  wake_word_auto_submit: boolean
+  wake_word_language?: string
   tts_provider: TTSProvider
   tts_api_key?: string
   tts_keys?: string        // JSON: Record<TTSProvider, string[]>
@@ -104,6 +111,12 @@ export type WakeWordProvider =
   | 'porcupine'
   | 'browser-keyword'
   | 'hotkey'
+
+export type WakeWordResponseMode =
+  | 'silent'
+  | 'greeting'
+  | 'chime'
+  | 'greeting+chime'
 
 export type TTSProvider =
   | 'web-speech-synthesis'
