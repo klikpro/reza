@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useBrandingStore } from '@/store/useBrandingStore'
 import { toast } from '@/components/ui/Toaster'
-import type { UserSettings, ProviderKeys } from '@/types'
+import type { UserSettings, ProviderKeys, WakeWordResponseMode } from '@/types'
 import { Eye, EyeOff, Mic, Volume2, Brain, User, Info, Image, Radio, Bell, Clock, Zap, Languages } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import ProviderKeyManager from '@/components/ui/ProviderKeyManager'
@@ -53,7 +53,28 @@ const TTS_PROVIDERS: ProviderDef[] = [
   { id: 'none', emoji: '🔇', label: 'Silent Mode', description: 'Tidak ada suara output', freeKey: true },
 ]
 
-const TABS = ['Suara', 'AI', 'Branding', 'Akun', 'Tentang']
+// ── Tipe lokal untuk field wake word yang belum ada di UserSettings lama ──
+type WakeWordForm = {
+  wake_word_response_mode: WakeWordResponseMode
+  wake_word_greeting: string
+  wake_word_listening_sound: boolean
+  wake_word_confirm_sound: boolean
+  wake_word_timeout: number
+  wake_word_auto_submit: boolean
+  wake_word_language: string
+}
+
+const WW_DEFAULTS: WakeWordForm = {
+  wake_word_response_mode: 'greeting+chime',
+  wake_word_greeting: 'Halo! Ada yang bisa saya bantu?',
+  wake_word_listening_sound: true,
+  wake_word_confirm_sound: true,
+  wake_word_timeout: 10,
+  wake_word_auto_submit: false,
+  wake_word_language: 'id-ID',
+}
+
+const TABS = ['Suara', 'Wake Word', 'AI', 'Branding', 'Akun', 'Tentang']
 
 export default function Settings() {
   const { user, signOut } = useAuthStore()
@@ -61,6 +82,7 @@ export default function Settings() {
   const { branding, updateBranding } = useBrandingStore()
   const [tab, setTab] = useState(0)
   const [form, setForm] = useState<Partial<UserSettings>>({})
+  const [wwForm, setWwForm] = useState<WakeWordForm>(WW_DEFAULTS)
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [brandingForm, setBrandingForm] = useState({ site_name: '', accent_color: '#06b6d4', logo_url: '' })
@@ -81,13 +103,26 @@ export default function Settings() {
   }, [user])
 
   useEffect(() => {
-    if (settings) setForm(settings)
+    if (settings) {
+      setForm(settings)
+      // Hydrate wwForm dari settings (field-field baru mungkin ada di settings)
+      setWwForm({
+        wake_word_response_mode: (settings as any).wake_word_response_mode ?? WW_DEFAULTS.wake_word_response_mode,
+        wake_word_greeting: (settings as any).wake_word_greeting ?? WW_DEFAULTS.wake_word_greeting,
+        wake_word_listening_sound: (settings as any).wake_word_listening_sound ?? WW_DEFAULTS.wake_word_listening_sound,
+        wake_word_confirm_sound: (settings as any).wake_word_confirm_sound ?? WW_DEFAULTS.wake_word_confirm_sound,
+        wake_word_timeout: (settings as any).wake_word_timeout ?? WW_DEFAULTS.wake_word_timeout,
+        wake_word_auto_submit: (settings as any).wake_word_auto_submit ?? WW_DEFAULTS.wake_word_auto_submit,
+        wake_word_language: (settings as any).wake_word_language ?? WW_DEFAULTS.wake_word_language,
+      })
+    }
   }, [settings])
 
   useEffect(() => {
     if (branding) setBrandingForm({ site_name: branding.site_name || '', accent_color: branding.accent_color || '#06b6d4', logo_url: branding.logo_url || '' })
   }, [branding])
 
+  // Simpan field UserSettings biasa
   const save = async (patch: Partial<UserSettings>) => {
     if (!user) return
     setSaving(true)
@@ -95,6 +130,17 @@ export default function Settings() {
     setForm(f => ({ ...f, ...patch }))
     setSaving(false)
     toast('✓ Pengaturan disimpan', 'success')
+  }
+
+  // Simpan field wake word (gabungkan form + wwForm saat kirim)
+  const saveWw = async (patch: Partial<WakeWordForm>) => {
+    if (!user) return
+    setSaving(true)
+    const merged = { ...wwForm, ...patch }
+    setWwForm(merged)
+    await updateSettings(user.id, { ...form, ...(merged as any) })
+    setSaving(false)
+    toast('✓ Pengaturan wake word disimpan', 'success')
   }
 
   const toggleKey = (k: string) => setShowKeys(s => ({ ...s, [k]: !s[k] }))
@@ -146,15 +192,35 @@ export default function Settings() {
     </div>
   )
 
+  // Toggle helper untuk wwForm
+  const Toggle = ({ field, label, desc }: { field: keyof WakeWordForm; label: string; desc: string }) => (
+    <div className="flex items-center justify-between py-1">
+      <div>
+        <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{label}</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{desc}</p>
+      </div>
+      <button
+        onClick={() => saveWw({ [field]: !wwForm[field] } as Partial<WakeWordForm>)}
+        className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+        style={{ background: wwForm[field] ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}
+      >
+        <span
+          className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
+          style={{ transform: wwForm[field] ? 'translateX(20px)' : 'translateX(0)' }}
+        />
+      </button>
+    </div>
+  )
+
   return (
     <div className="p-6 max-w-4xl mx-auto pb-24 md:pb-6">
       <h1 className="text-2xl font-black mb-6" style={{ color: 'var(--text-primary)' }}>Pengaturan</h1>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-8 p-1 rounded-xl w-fit" style={{ background: 'var(--bg-secondary)' }}>
+      {/* Tabs — scrollable on mobile */}
+      <div className="flex gap-1 mb-8 p-1 rounded-xl w-fit max-w-full overflow-x-auto" style={{ background: 'var(--bg-secondary)' }}>
         {TABS.map((t, i) => (
           <button key={t} onClick={() => setTab(i)}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap"
             style={{
               background: tab === i ? 'var(--accent)' : 'transparent',
               color: tab === i ? 'white' : 'var(--text-secondary)',
@@ -164,7 +230,7 @@ export default function Settings() {
         ))}
       </div>
 
-      {/* Tab 0: Suara */}
+      {/* ── Tab 0: Suara (STT + TTS + Pengaturan Suara) ── */}
       {tab === 0 && (
         <div className="space-y-4">
           <ProviderKeyManager
@@ -176,187 +242,6 @@ export default function Settings() {
             onActivate={id => save({ stt_provider: id as any })}
             onKeysChange={saveSttKeys}
           />
-          <section className="card p-4 space-y-4">
-            <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <Radio size={15} style={{ color: 'var(--accent)' }} /> Wake Word
-            </h2>
-
-            {/* Mode */}
-            {sel('wake_word_provider', 'Mode Aktivasi', [
-              ['none', '🔇 Tidak Aktif'],
-              ['browser-keyword', '🌐 Keyword / Kata Kunci'],
-              ['hotkey', '⌨️ Keyboard Shortcut'],
-            ])}
-
-            {/* Keyword config */}
-            {form.wake_word_provider === 'browser-keyword' && (
-              <>
-                {inp('wake_word_custom', 'Kata Kunci Wake Word', 'text', 'hey memory')}
-                {slid('wake_word_sensitivity', 'Sensitivitas Deteksi', 0, 1)}
-              </>
-            )}
-
-            {/* Hotkey config */}
-            {form.wake_word_provider === 'hotkey' && (
-              inp('wake_word_key', 'Kombinasi Tombol', 'text', 'ctrl+shift+m')
-            )}
-
-            {/* ── Jawaban / Respons Wake Word ── */}
-            {form.wake_word_provider !== 'none' && (
-              <>
-                <hr style={{ borderColor: 'var(--border)' }} />
-                <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Pengaturan Jawaban</h3>
-
-                {/* Response mode */}
-                <div>
-                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                    <Bell size={12} className="inline mr-1" /> Mode Respons
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {([
-                      ['silent',         '🔇 Diam saja'],
-                      ['chime',          '🔔 Bunyi chime'],
-                      ['greeting',       '💬 Ucapan sapaan'],
-                      ['greeting+chime', '🔔💬 Chime + Sapaan'],
-                    ] as [string, string][]).map(([v, l]) => (
-                      <button key={v}
-                        onClick={() => save({ wake_word_response_mode: v as any })}
-                        className="px-3 py-2 rounded-lg text-xs font-medium border transition-all text-left"
-                        style={{
-                          borderColor: (form as any).wake_word_response_mode === v ? 'var(--accent)' : 'var(--border)',
-                          background: (form as any).wake_word_response_mode === v ? 'rgba(var(--accent-rgb,6 182 212)/.12)' : 'transparent',
-                          color: (form as any).wake_word_response_mode === v ? 'var(--accent)' : 'var(--text-secondary)',
-                        }}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Greeting text */}
-                {((form as any).wake_word_response_mode === 'greeting' || (form as any).wake_word_response_mode === 'greeting+chime') && (
-                  <div>
-                    <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                      💬 Teks Sapaan
-                    </label>
-                    <input
-                      type="text"
-                      value={(form as any).wake_word_greeting || ''}
-                      onChange={e => setForm(f => ({ ...f, wake_word_greeting: e.target.value }))}
-                      onBlur={() => save({ wake_word_greeting: (form as any).wake_word_greeting } as any)}
-                      placeholder="Halo! Ada yang bisa saya bantu?"
-                      className="input-field"
-                    />
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                      Teks ini akan diucapkan via TTS saat wake word terdeteksi.
-                    </p>
-                  </div>
-                )}
-
-                {/* Bahasa wake word */}
-                <div>
-                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                    <Languages size={12} className="inline mr-1" /> Bahasa Mendengarkan
-                  </label>
-                  <input
-                    type="text"
-                    value={(form as any).wake_word_language || 'id-ID'}
-                    onChange={e => setForm(f => ({ ...f, wake_word_language: e.target.value }))}
-                    onBlur={() => save({ wake_word_language: (form as any).wake_word_language } as any)}
-                    placeholder="id-ID"
-                    className="input-field"
-                  />
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    Kode BCP-47, contoh: id-ID, en-US, ms-MY
-                  </p>
-                </div>
-
-                {/* Timeout */}
-                <div>
-                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                    <Clock size={12} className="inline mr-1" /> Timeout Mendengarkan:{' '}
-                    <span style={{ color: 'var(--accent)' }}>{(form as any).wake_word_timeout ?? 10}s</span>
-                  </label>
-                  <input type="range" min={3} max={60} step={1}
-                    value={(form as any).wake_word_timeout ?? 10}
-                    onChange={e => setForm(f => ({ ...f, wake_word_timeout: parseInt(e.target.value) }))}
-                    onMouseUp={() => save({ wake_word_timeout: (form as any).wake_word_timeout } as any)}
-                    className="w-full accent-[var(--accent)]" />
-                  <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    <span>3s</span><span>60s</span>
-                  </div>
-                </div>
-
-                {/* Toggle: suara mendengarkan */}
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                      🎵 Suara saat mulai mendengarkan
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Bunyi pendek ketika masuk mode input</p>
-                  </div>
-                  <button onClick={() => save({ wake_word_listening_sound: !(form as any).wake_word_listening_sound } as any)}
-                    className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
-                    style={{ background: (form as any).wake_word_listening_sound ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
-                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
-                      style={{ transform: (form as any).wake_word_listening_sound ? 'translateX(20px)' : 'translateX(0)' }} />
-                  </button>
-                </div>
-
-                {/* Toggle: suara konfirmasi */}
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                      ✅ Suara konfirmasi selesai
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Bunyi saat input selesai diproses</p>
-                  </div>
-                  <button onClick={() => save({ wake_word_confirm_sound: !(form as any).wake_word_confirm_sound } as any)}
-                    className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
-                    style={{ background: (form as any).wake_word_confirm_sound ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
-                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
-                      style={{ transform: (form as any).wake_word_confirm_sound ? 'translateX(16px)' : 'translateX(0)' }} />
-                  </button>
-                </div>
-
-                {/* Toggle: auto-submit */}
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                      <Zap size={12} className="inline mr-1" />Auto-submit setelah diam
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Kirim otomatis jika tidak ada suara selama timeout</p>
-                  </div>
-                  <button onClick={() => save({ wake_word_auto_submit: !(form as any).wake_word_auto_submit } as any)}
-                    className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
-                    style={{ background: (form as any).wake_word_auto_submit ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}>
-                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow-sm"
-                      style={{ transform: (form as any).wake_word_auto_submit ? 'translateX(16px)' : 'translateX(0)' }} />
-                  </button>
-                </div>
-
-                {/* Preview box */}
-                <div className="rounded-xl p-3 space-y-1" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                  <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>📋 Ringkasan Konfigurasi</p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    Trigger: <strong>{form.wake_word_provider === 'browser-keyword' ? `"${form.wake_word_custom || 'hey memory'}"` : form.wake_word_key || 'ctrl+shift+m'}</strong>
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    Respons: <strong>{(form as any).wake_word_response_mode || 'greeting+chime'}</strong>
-                  </p>
-                  {((form as any).wake_word_response_mode === 'greeting' || (form as any).wake_word_response_mode === 'greeting+chime') && (
-                    <p className="text-xs italic" style={{ color: 'var(--accent)' }}>
-                      "{(form as any).wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'}"
-                    </p>
-                  )}
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    Timeout: <strong>{(form as any).wake_word_timeout ?? 10}s</strong> ·{' '}
-                    Bahasa: <strong>{(form as any).wake_word_language || 'id-ID'}</strong>
-                  </p>
-                </div>
-              </>
-            )}
-          </section>
           <ProviderKeyManager
             title="Text-to-Speech (TTS)"
             icon={<Volume2 size={16} style={{ color: 'var(--accent)' }} />}
@@ -377,10 +262,193 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 1: AI */}
+      {/* ── Tab 1: Wake Word ── */}
       {tab === 1 && (
         <div className="space-y-4">
-          {/* Toggle */}
+
+          {/* Kartu 1: Aktivasi */}
+          <section className="card p-4 space-y-4">
+            <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <Radio size={15} style={{ color: 'var(--accent)' }} /> Aktivasi Wake Word
+            </h2>
+            {sel('wake_word_provider', 'Mode Aktivasi', [
+              ['none', '🔇 Tidak Aktif'],
+              ['browser-keyword', '🌐 Keyword / Kata Kunci'],
+              ['hotkey', '⌨️ Keyboard Shortcut'],
+            ])}
+            {form.wake_word_provider === 'browser-keyword' && (
+              <>
+                {inp('wake_word_custom', 'Kata Kunci Wake Word', 'text', 'hey memory')}
+                {slid('wake_word_sensitivity', 'Sensitivitas Deteksi', 0, 1)}
+              </>
+            )}
+            {form.wake_word_provider === 'hotkey' && (
+              inp('wake_word_key', 'Kombinasi Tombol', 'text', 'ctrl+shift+m')
+            )}
+          </section>
+
+          {/* Kartu 2: Jawaban & Respons — tampil hanya jika aktif */}
+          {form.wake_word_provider !== 'none' && (
+            <section className="card p-4 space-y-4">
+              <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <Bell size={15} style={{ color: 'var(--accent)' }} /> Jawaban & Respons
+              </h2>
+
+              {/* Mode respons — tile picker */}
+              <div>
+                <label className="text-xs font-semibold block mb-2" style={{ color: 'var(--text-muted)' }}>
+                  Mode Respons saat Wake Word terdeteksi
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['silent',         '🔇', 'Diam saja',       'Tidak ada respons audio'],
+                    ['chime',          '🔔', 'Bunyi chime',      'Notifikasi bunyi pendek'],
+                    ['greeting',       '💬', 'Ucapan sapaan',    'Mengucapkan teks sapaan via TTS'],
+                    ['greeting+chime', '🔔💬', 'Chime + Sapaan', 'Chime lalu ucapan sapaan'],
+                  ] as [WakeWordResponseMode, string, string, string][]).map(([v, emoji, title, sub]) => (
+                    <button key={v}
+                      onClick={() => saveWw({ wake_word_response_mode: v })}
+                      className="flex items-start gap-2 p-3 rounded-xl border transition-all text-left"
+                      style={{
+                        borderColor: wwForm.wake_word_response_mode === v ? 'var(--accent)' : 'var(--border)',
+                        background: wwForm.wake_word_response_mode === v ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--bg-secondary)',
+                      }}>
+                      <span className="text-base mt-0.5 flex-shrink-0">{emoji}</span>
+                      <div>
+                        <p className="text-xs font-semibold" style={{ color: wwForm.wake_word_response_mode === v ? 'var(--accent)' : 'var(--text-primary)' }}>{title}</p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Teks sapaan — tampil hanya jika mode greeting */}
+              {(wwForm.wake_word_response_mode === 'greeting' || wwForm.wake_word_response_mode === 'greeting+chime') && (
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    💬 Teks Sapaan
+                  </label>
+                  <input
+                    type="text"
+                    value={wwForm.wake_word_greeting}
+                    onChange={e => setWwForm(f => ({ ...f, wake_word_greeting: e.target.value }))}
+                    onBlur={() => saveWw({ wake_word_greeting: wwForm.wake_word_greeting })}
+                    placeholder="Halo! Ada yang bisa saya bantu?"
+                    className="input-field"
+                  />
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Diucapkan oleh TTS saat wake word terdeteksi.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Kartu 3: Pengaturan Lanjutan — tampil hanya jika aktif */}
+          {form.wake_word_provider !== 'none' && (
+            <section className="card p-4 space-y-4">
+              <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <Zap size={15} style={{ color: 'var(--accent)' }} /> Pengaturan Lanjutan
+              </h2>
+
+              {/* Bahasa */}
+              <div>
+                <label className="text-xs font-semibold flex items-center gap-1 mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                  <Languages size={12} /> Bahasa Mendengarkan
+                </label>
+                <input
+                  type="text"
+                  value={wwForm.wake_word_language}
+                  onChange={e => setWwForm(f => ({ ...f, wake_word_language: e.target.value }))}
+                  onBlur={() => saveWw({ wake_word_language: wwForm.wake_word_language })}
+                  placeholder="id-ID"
+                  className="input-field"
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Kode BCP-47, contoh: id-ID · en-US · ms-MY</p>
+              </div>
+
+              {/* Timeout slider */}
+              <div>
+                <label className="text-xs font-semibold flex items-center gap-1 mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                  <Clock size={12} /> Timeout Mendengarkan:&nbsp;
+                  <span style={{ color: 'var(--accent)' }}>{wwForm.wake_word_timeout}s</span>
+                </label>
+                <input type="range" min={3} max={60} step={1}
+                  value={wwForm.wake_word_timeout}
+                  onChange={e => setWwForm(f => ({ ...f, wake_word_timeout: parseInt(e.target.value) }))}
+                  onMouseUp={() => saveWw({ wake_word_timeout: wwForm.wake_word_timeout })}
+                  className="w-full accent-[var(--accent)]" />
+                <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  <span>3s</span><span>60s</span>
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <Toggle
+                  field="wake_word_listening_sound"
+                  label="🎵 Suara saat mulai mendengarkan"
+                  desc="Bunyi pendek ketika masuk mode input suara"
+                />
+                <Toggle
+                  field="wake_word_confirm_sound"
+                  label="✅ Suara konfirmasi selesai"
+                  desc="Bunyi saat input selesai diproses"
+                />
+                <Toggle
+                  field="wake_word_auto_submit"
+                  label="⚡ Auto-submit setelah diam"
+                  desc="Kirim otomatis jika tidak ada suara sampai timeout"
+                />
+              </div>
+            </section>
+          )}
+
+          {/* Kartu 4: Ringkasan konfigurasi */}
+          {form.wake_word_provider !== 'none' && (
+            <section className="rounded-xl p-4 space-y-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>📋 Ringkasan Konfigurasi Aktif</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <span>Trigger</span>
+                <strong>
+                  {form.wake_word_provider === 'browser-keyword'
+                    ? `"${form.wake_word_custom || 'hey memory'}"`
+                    : form.wake_word_key || 'ctrl+shift+m'}
+                </strong>
+                <span>Mode respons</span>
+                <strong>{wwForm.wake_word_response_mode}</strong>
+                {(wwForm.wake_word_response_mode === 'greeting' || wwForm.wake_word_response_mode === 'greeting+chime') && (
+                  <>
+                    <span>Sapaan</span>
+                    <em style={{ color: 'var(--accent)' }}>"{wwForm.wake_word_greeting}"</em>
+                  </>
+                )}
+                <span>Bahasa</span>
+                <strong>{wwForm.wake_word_language}</strong>
+                <span>Timeout</span>
+                <strong>{wwForm.wake_word_timeout}s</strong>
+                <span>Auto-submit</span>
+                <strong>{wwForm.wake_word_auto_submit ? 'Aktif' : 'Nonaktif'}</strong>
+              </div>
+            </section>
+          )}
+
+          {/* Placeholder jika wake word tidak aktif */}
+          {form.wake_word_provider === 'none' && (
+            <div className="card p-10 text-center space-y-2">
+              <p className="text-3xl">🔇</p>
+              <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Wake Word Tidak Aktif</p>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Pilih mode aktivasi di atas untuk mengatur kata kunci atau shortcut keyboard.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab 2: AI ── */}
+      {tab === 2 && (
+        <div className="space-y-4">
           <section className="card p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -433,8 +501,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 2: Branding */}
-      {tab === 2 && (
+      {/* ── Tab 3: Branding ── */}
+      {tab === 3 && (
         <div className="space-y-6">
           <section className="card p-5 space-y-5">
             <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -462,7 +530,6 @@ export default function Settings() {
                     onBlur={() => { updateBranding({ accent_color: brandingForm.accent_color }); toast('✓ Warna disimpan', 'success') }}
                     placeholder="#06b6d4" />
                 </div>
-                {/* Quick palette */}
                 <div className="flex gap-1.5">
                   {['#06b6d4','#8b5cf6','#f97316','#10b981','#f43f5e','#3b82f6'].map(c => (
                     <button key={c} onClick={() => { setBrandingForm(f => ({ ...f, accent_color: c })); document.documentElement.style.setProperty('--accent', c); updateBranding({ accent_color: c }) }}
@@ -499,7 +566,6 @@ export default function Settings() {
               </label>
             </div>
 
-            {/* Live preview */}
             <div className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>Preview Nama & Logo:</p>
               <div className="flex items-center gap-2">
@@ -515,8 +581,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 3: Akun */}
-      {tab === 3 && (
+      {/* ── Tab 4: Akun ── */}
+      {tab === 4 && (
         <div className="space-y-6">
           <section className="card p-5 space-y-4">
             <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -545,8 +611,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 4: Tentang */}
-      {tab === 4 && (
+      {/* ── Tab 5: Tentang ── */}
+      {tab === 5 && (
         <div className="card p-6 space-y-4">
           <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
             <Info size={18} style={{ color: 'var(--accent)' }} /> Tentang MemoryVault
