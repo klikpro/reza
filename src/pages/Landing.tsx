@@ -83,8 +83,8 @@ export default function Landing() {
     ctx.clearRect(0, 0, W, H)
 
     // ── Audio data ─────────────────────────────────────────
-    let freqData: Uint8Array
-    let timeData: Uint8Array
+    let freqData: Uint8Array<ArrayBuffer>
+    let timeData: Uint8Array<ArrayBuffer>
     let avg = 0.06 + 0.04 * Math.sin(t * 1.2)
 
     if (analyserRef.current) {
@@ -99,10 +99,14 @@ export default function Landing() {
       }
       avg = Math.sqrt(rms / timeData.length)
     } else {
-      freqData = new Uint8Array(128).map((_, i) =>
-        Math.floor(40 * Math.abs(Math.sin(t * 0.9 + i * 0.15)))
-      )
-      timeData = new Uint8Array(128).fill(128)
+      const fb = new ArrayBuffer(128)
+      const tb = new ArrayBuffer(128)
+      freqData = new Uint8Array(fb)
+      timeData = new Uint8Array(tb)
+      for (let i = 0; i < 128; i++) {
+        freqData[i] = Math.floor(40 * Math.abs(Math.sin(t * 0.9 + i * 0.15)))
+        timeData[i] = 128
+      }
     }
 
     const isActive = phase === 'listening' || phase === 'speaking'
