@@ -263,30 +263,46 @@ export default function Landing() {
 
   // ── Wake word listener ────────────────────────────────────
   useEffect(() => {
-    if (!settings || settings.wake_word_provider === 'none') return
+    console.log('[WakeWord] useEffect fired', {
+      hasSettings: !!settings,
+      provider: settings?.wake_word_provider,
+      keyword: settings?.wake_word_custom,
+      hasUser: !!user,
+    })
+
+    if (!settings || settings.wake_word_provider === 'none') {
+      console.warn('[WakeWord] Aborted — provider is none or settings missing')
+      return
+    }
 
     const userName = user?.full_name?.split(' ')[0] || 'Reza'
     const siteName_ = branding?.site_name || 'KlikPro RME'
 
     const provider = createWakeWordProvider(settings)
+    console.log('[WakeWord] Provider created:', provider.constructor.name)
+
     wakeRef.current = provider
-    provider.start(async () => {
+    const started = provider.start(async () => {
+      console.log('[WakeWord] ✅ Keyword detected! Starting greeting...')
       setPhase('wake')
       await startVisualizer()
-      // Sapa langsung via TTS
       await speak(
         `Halo ${userName}! Saya asisten AI ${siteName_}. ` +
         `Saya siap membantu Anda mengelola rekam medis. ` +
         `Silakan ucapkan perintah Anda setelah ini.`
       )
-      // Lanjut listening kalau user sudah login
       if (user) {
         setTimeout(() => startListening(), 400)
       }
     })
+    console.log('[WakeWord] provider.start() returned:', started)
     setWakeActive(true)
 
-    return () => { provider.stop(); setWakeActive(false) }
+    return () => {
+      console.log('[WakeWord] Cleanup — stopping provider')
+      provider.stop()
+      setWakeActive(false)
+    }
   }, [user, settings?.wake_word_provider, settings?.wake_word_custom])
 
   const startListening = useCallback(async () => {

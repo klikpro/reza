@@ -39,8 +39,12 @@ export class BrowserKeywordSpotting {
 
   start(onDetected: OnDetectedCallback): boolean {
     const SR = getSR()
-    if (!SR) return false
+    if (!SR) {
+      console.error('[WakeWordService] SpeechRecognition not supported in this browser')
+      return false
+    }
 
+    console.log('[WakeWordService] Starting with keyword:', `"${this.keyword}"`)
     this.onDetected = onDetected
     this.active = true
     this.cooldown = false
@@ -49,27 +53,43 @@ export class BrowserKeywordSpotting {
     this.recognition.interimResults = true
     this.recognition.lang = 'id-ID'
 
+    this.recognition.onstart = () => {
+      console.log('[WakeWordService] Recognition started, listening for:', `"${this.keyword}"`)
+    }
+
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
       if (this.cooldown) return
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0].transcript
+        const isFinal = event.results[i].isFinal
+        console.log(`[WakeWordService] Heard (${isFinal ? 'final' : 'interim'}):`, `"${text}"`, '| checking against:', `"${this.keyword}"`)
         if (this.matches(text)) {
+          console.log('[WakeWordService] ✅ MATCH FOUND! Triggering callback')
           this.cooldown = true
           this.onDetected?.()
-          // reset cooldown after 3s to allow re-trigger
           setTimeout(() => { this.cooldown = false }, 3000)
           break
         }
       }
     }
 
+    this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('[WakeWordService] Recognition error:', event.error, event.message)
+    }
+
     this.recognition.onend = () => {
+      console.log('[WakeWordService] Recognition ended, active:', this.active)
       if (this.active) {
-        try { this.recognition?.start() } catch {}
+        try { this.recognition?.start() } catch (e) {
+          console.error('[WakeWordService] Failed to restart:', e)
+        }
       }
     }
 
-    try { this.recognition.start(); return true } catch { return false }
+    try { this.recognition.start(); return true } catch (e) {
+      console.error('[WakeWordService] Failed to start:', e)
+      return false
+    }
   }
 
   stop(): void {
