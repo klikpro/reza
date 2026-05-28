@@ -250,16 +250,39 @@ export default function Landing() {
     return () => cancelAnimationFrame(rafRef.current)
   }, [draw])
 
+  // ── Speak helper — langsung TTS tanpa AI ────────────────
+  const speak = useCallback(async (text: string) => {
+    if (!settings) return
+    setPhase('speaking')
+    setAnswer(text)
+    const tts = createRoundRobinTTS(settings)
+    await tts.speak(text)
+    setPhase('idle')
+    setAnswer('')
+  }, [settings])
+
   // ── Wake word listener ────────────────────────────────────
   useEffect(() => {
-    if (!user || !settings || settings.wake_word_provider === 'none') return
+    if (!settings || settings.wake_word_provider === 'none') return
+
+    const userName = user?.full_name?.split(' ')[0] || 'Reza'
+    const siteName_ = branding?.site_name || 'KlikPro RME'
 
     const provider = createWakeWordProvider(settings)
     wakeRef.current = provider
     provider.start(async () => {
       setPhase('wake')
       await startVisualizer()
-      setTimeout(() => startListening(), 1200)
+      // Sapa langsung via TTS
+      await speak(
+        `Halo ${userName}! Saya asisten AI ${siteName_}. ` +
+        `Saya siap membantu Anda mengelola rekam medis. ` +
+        `Silakan ucapkan perintah Anda setelah ini.`
+      )
+      // Lanjut listening kalau user sudah login
+      if (user) {
+        setTimeout(() => startListening(), 400)
+      }
     })
     setWakeActive(true)
 
