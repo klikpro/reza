@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useBrandingStore } from '@/store/useBrandingStore'
-import { themes, applyTheme } from '@/styles/themes'
 import { toast } from '@/components/ui/Toaster'
-import type { ThemeName, UserSettings, ProviderKeys } from '@/types'
-import { Eye, EyeOff, Check, Mic, Volume2, Brain, User, Info, Image } from 'lucide-react'
+import type { UserSettings, ProviderKeys } from '@/types'
+import { Eye, EyeOff, Mic, Volume2, Brain, User, Info, Image } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import ProviderKeyManager from '@/components/ui/ProviderKeyManager'
 import type { ProviderDef } from '@/components/ui/ProviderKeyManager'
@@ -54,7 +53,7 @@ const TTS_PROVIDERS: ProviderDef[] = [
   { id: 'none', emoji: '🔇', label: 'Silent Mode', description: 'Tidak ada suara output', freeKey: true },
 ]
 
-const TABS = ['Tampilan', 'Suara', 'AI', 'Branding', 'Akun', 'Tentang']
+const TABS = ['Suara', 'AI', 'Branding', 'Akun', 'Tentang']
 
 export default function Settings() {
   const { user, signOut } = useAuthStore()
@@ -165,53 +164,8 @@ export default function Settings() {
         ))}
       </div>
 
-      {/* Tab 0: Tampilan */}
+      {/* Tab 0: Suara */}
       {tab === 0 && (
-        <div className="space-y-8">
-          <section>
-            <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Tema</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {themes.map(t => (
-                <button key={t.name} onClick={() => { applyTheme(t.name); save({ theme: t.name }) }}
-                  className="rounded-xl border p-3 text-left transition-all"
-                  style={{
-                    borderColor: form.theme === t.name ? 'var(--accent)' : 'var(--border)',
-                    background: form.theme === t.name ? 'rgba(124,92,252,0.08)' : 'var(--bg-card)',
-                    boxShadow: form.theme === t.name ? '0 0 0 2px var(--accent)' : undefined,
-                  }}>
-                  {/* Mini preview */}
-                  <div className="rounded-lg h-12 mb-2 overflow-hidden flex gap-1 p-1.5"
-                    style={{ background: t.preview.bg }}>
-                    <div className="w-5 rounded" style={{ background: t.preview.card }} />
-                    <div className="flex-1 space-y-1">
-                      <div className="h-1.5 rounded-full w-3/4" style={{ background: t.preview.accent }} />
-                      <div className="h-1 rounded-full w-1/2" style={{ background: t.preview.text, opacity: 0.5 }} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{t.emoji} {t.label}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', fontSize: 10 }}>{t.description}</p>
-                    </div>
-                    {form.theme === t.name && <Check size={12} style={{ color: 'var(--accent)' }} />}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="card p-5 space-y-5">
-            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Layout & Preferensi</h2>
-            {sel('default_view', 'Tampilan Default', [['grid', '⊞ Grid'], ['list', '☰ List'], ['timeline', '⏱ Timeline']])}
-            {sel('font_size', 'Ukuran Font', [['small', 'Kecil'], ['medium', 'Sedang'], ['large', 'Besar']])}
-            {sel('animation', 'Animasi', [['full', 'Penuh'], ['reduced', 'Dikurangi'], ['none', 'Tidak Ada']])}
-            {sel('language', 'Bahasa', [['id', '🇮🇩 Bahasa Indonesia'], ['en', '🇺🇸 English']])}
-          </section>
-        </div>
-      )}
-
-      {/* Tab 1: Suara */}
-      {tab === 1 && (
         <div className="space-y-4">
           <ProviderKeyManager
             title="Voice Input (STT)"
@@ -250,8 +204,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 2: AI */}
-      {tab === 2 && (
+      {/* Tab 1: AI */}
+      {tab === 1 && (
         <div className="space-y-4">
           {/* Toggle */}
           <section className="card p-4">
@@ -306,8 +260,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 3: Branding */}
-      {tab === 3 && (
+      {/* Tab 2: Branding */}
+      {tab === 2 && (
         <div className="space-y-6">
           <section className="card p-5 space-y-5">
             <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -388,8 +342,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 4: Akun */}
-      {tab === 4 && (
+      {/* Tab 3: Akun */}
+      {tab === 3 && (
         <div className="space-y-6">
           <section className="card p-5 space-y-4">
             <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -418,8 +372,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Tab 5: Tentang */}
-      {tab === 5 && (
+      {/* Tab 4: Tentang */}
+      {tab === 4 && (
         <div className="card p-6 space-y-4">
           <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
             <Info size={18} style={{ color: 'var(--accent)' }} /> Tentang MemoryVault
