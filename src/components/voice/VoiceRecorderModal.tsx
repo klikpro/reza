@@ -22,6 +22,7 @@ export default function VoiceRecorderModal({ open, onClose }: Props) {
   const { user } = useAuthStore()
   const { settings } = useSettingsStore()
 
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const sttRef = useRef<WebSpeechSTT | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -38,6 +39,12 @@ export default function VoiceRecorderModal({ open, onClose }: Props) {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
+    // Tutup AudioContext untuk mencegah resource leak (terutama iOS Safari)
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(() => {})
+      audioCtxRef.current = null
+    }
+    analyserRef.current = null
   }, [])
 
   const startRecording = useCallback(async () => {
@@ -50,11 +57,13 @@ export default function VoiceRecorderModal({ open, onClose }: Props) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
       const audioCtx = new AudioContext()
+      audioCtxRef.current = audioCtx
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
       analyser.fftSize = 256
       source.connect(analyser)
       analyserRef.current = analyser
+      // drawWaveform dipanggil SETELAH analyserRef di-set
       drawWaveform()
     } catch { /* mic access denied */ }
 
@@ -104,6 +113,8 @@ export default function VoiceRecorderModal({ open, onClose }: Props) {
 
     const bufferLength = analyser.frequencyBinCount
     const dataArray = new Uint8Array(bufferLength)
+    // Ambil warna aksen sekali di luar loop agar tidak query DOM tiap frame
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c5cfc'
 
     const draw = () => {
       animFrameRef.current = requestAnimationFrame(draw)
@@ -119,7 +130,6 @@ export default function VoiceRecorderModal({ open, onClose }: Props) {
         const barHeight = (dataArray[i] / 255) * canvas.height * 0.8
         avg += dataArray[i]
 
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c5cfc'
         ctx.fillStyle = accent
         ctx.globalAlpha = 0.8
         ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight)

@@ -24,11 +24,6 @@ export class BrowserKeywordSpotting {
     return text.toLowerCase()
       .replace(/[^a-z0-9\s]/g, '')
       .replace(/\s+/g, ' ')
-      // samakan variasi ejaan umum
-      .replace(/\bhallo\b/g, 'halo')
-      .replace(/\bhello\b/g, 'halo')
-      .replace(/\bhey\b/g, 'halo')
-      .replace(/\bhai\b/g, 'halo')
       .trim()
   }
 

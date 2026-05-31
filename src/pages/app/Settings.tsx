@@ -100,7 +100,8 @@ export default function Settings() {
 
   useEffect(() => {
     if (user) fetchSettings(user.id)
-  }, [user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   useEffect(() => {
     if (settings) {
@@ -188,6 +189,7 @@ export default function Settings() {
         value={(form[field] as number) ?? min}
         onChange={e => setForm(f => ({ ...f, [field]: parseFloat(e.target.value) }))}
         onMouseUp={() => save({ [field]: form[field] } as Partial<UserSettings>)}
+        onTouchEnd={() => save({ [field]: form[field] } as Partial<UserSettings>)}
         className="w-full accent-[var(--accent)]" />
     </div>
   )
@@ -378,6 +380,7 @@ export default function Settings() {
                   value={wwForm.wake_word_timeout}
                   onChange={e => setWwForm(f => ({ ...f, wake_word_timeout: parseInt(e.target.value) }))}
                   onMouseUp={() => saveWw({ wake_word_timeout: wwForm.wake_word_timeout })}
+                  onTouchEnd={() => saveWw({ wake_word_timeout: wwForm.wake_word_timeout })}
                   className="w-full accent-[var(--accent)]" />
                 <div className="flex justify-between text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                   <span>3s</span><span>60s</span>
@@ -498,86 +501,6 @@ export default function Settings() {
               </section>
             </>
           )}
-        </div>
-      )}
-
-      {/* ── Tab 3: Branding ── */}
-      {tab === 3 && (
-        <div className="space-y-6">
-          <section className="card p-5 space-y-5">
-            <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-              <Image size={18} style={{ color: 'var(--accent)' }} /> Branding Website
-            </h2>
-
-            <div>
-              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Nama Website</label>
-              <input className="input-field" value={brandingForm.site_name}
-                onChange={e => setBrandingForm(f => ({ ...f, site_name: e.target.value }))}
-                onBlur={() => { updateBranding({ site_name: brandingForm.site_name }); toast('✓ Nama disimpan', 'success') }}
-                placeholder="MemoryVault" />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Warna Aksen</label>
-              <div className="flex items-center gap-3">
-                <input type="color" value={brandingForm.accent_color}
-                  onChange={e => { setBrandingForm(f => ({ ...f, accent_color: e.target.value })); document.documentElement.style.setProperty('--accent', e.target.value) }}
-                  onBlur={() => { updateBranding({ accent_color: brandingForm.accent_color }); toast('✓ Warna disimpan', 'success') }}
-                  className="w-12 h-10 rounded-lg cursor-pointer border-0" />
-                <div className="flex-1">
-                  <input className="input-field" value={brandingForm.accent_color}
-                    onChange={e => { setBrandingForm(f => ({ ...f, accent_color: e.target.value })); document.documentElement.style.setProperty('--accent', e.target.value) }}
-                    onBlur={() => { updateBranding({ accent_color: brandingForm.accent_color }); toast('✓ Warna disimpan', 'success') }}
-                    placeholder="#06b6d4" />
-                </div>
-                <div className="flex gap-1.5">
-                  {['#06b6d4','#8b5cf6','#f97316','#10b981','#f43f5e','#3b82f6'].map(c => (
-                    <button key={c} onClick={() => { setBrandingForm(f => ({ ...f, accent_color: c })); document.documentElement.style.setProperty('--accent', c); updateBranding({ accent_color: c }) }}
-                      className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
-                      style={{ background: c, borderColor: brandingForm.accent_color === c ? '#fff' : 'transparent' }} />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Logo (Upload Gambar)</label>
-              {brandingForm.logo_url && (
-                <img src={brandingForm.logo_url} alt="logo" className="w-16 h-16 object-contain rounded-xl mb-3 border" style={{ borderColor: 'var(--border)' }} />
-              )}
-              <label className="btn-secondary text-sm cursor-pointer">
-                {uploadingLogo ? 'Mengupload...' : '📁 Pilih File Logo'}
-                <input type="file" accept="image/*" className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    setUploadingLogo(true)
-                    const ext = file.name.split('.').pop()
-                    const path = `logos/logo_${Date.now()}.${ext}`
-                    const { error } = await supabase.storage.from('branding').upload(path, file, { upsert: true })
-                    if (!error) {
-                      const { data: { publicUrl } } = supabase.storage.from('branding').getPublicUrl(path)
-                      setBrandingForm(f => ({ ...f, logo_url: publicUrl }))
-                      await updateBranding({ logo_url: publicUrl })
-                      toast('✓ Logo diperbarui', 'success')
-                    } else toast('Gagal upload logo', 'error')
-                    setUploadingLogo(false)
-                  }} />
-              </label>
-            </div>
-
-            <div className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>Preview Nama & Logo:</p>
-              <div className="flex items-center gap-2">
-                {brandingForm.logo_url
-                  ? <img src={brandingForm.logo_url} className="w-8 h-8 rounded-lg object-contain" />
-                  : <div className="w-8 h-8 rounded-lg" style={{ background: brandingForm.accent_color }} />}
-                <span className="font-black text-xl" style={{ color: brandingForm.accent_color }}>
-                  {brandingForm.site_name || 'MemoryVault'}
-                </span>
-              </div>
-            </div>
-          </section>
         </div>
       )}
 

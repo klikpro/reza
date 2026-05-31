@@ -106,9 +106,16 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
 
   bulkAssignCategory: async (ids, categoryId) => {
     await supabase.from('memories').update({ category_id: categoryId }).in('id', ids)
+    // Fetch relasi kategori terbaru agar MemoryCard tidak menampilkan data lama
+    const { data: updated } = await supabase
+      .from('memories')
+      .select('*, category:categories(*)')
+      .in('id', ids)
+    const updatedMap: Record<string, Memory> = {}
+    if (updated) updated.forEach((m: Memory) => { updatedMap[m.id] = m })
     set(state => ({
       memories: state.memories.map(m =>
-        ids.includes(m.id) ? { ...m, category_id: categoryId } : m
+        ids.includes(m.id) ? (updatedMap[m.id] ?? { ...m, category_id: categoryId }) : m
       ),
       selectedIds: [],
     }))

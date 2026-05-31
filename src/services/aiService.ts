@@ -45,11 +45,23 @@ function buildProviders(settings: UserSettings): AIProviderConfig[] {
   const providers: AIProviderConfig[] = []
 
   const modelMap: Record<string, { url: string; model: string }> = {
-    'openai-gpt4o':      { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' },
-    'openai-gpt4o-mini': { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
-    'groq':              { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama3-8b-8192' },
-    'google-gemini':     { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-1.5-flash' },
-    'anthropic-claude':  { url: 'https://api.anthropic.com/v1/messages', model: 'claude-3-haiku-20240307' },
+    'openai-gpt4o':           { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' },
+    'openai-gpt4o-mini':      { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
+    'openai-gpt4-turbo':      { url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4-turbo' },
+    'openai-o1-mini':         { url: 'https://api.openai.com/v1/chat/completions', model: 'o1-mini' },
+    'groq-llama3':            { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama3-70b-8192' },
+    'groq-mixtral':           { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'mixtral-8x7b-32768' },
+    'groq-gemma':             { url: 'https://api.groq.com/openai/v1/chat/completions', model: 'gemma2-9b-it' },
+    'google-gemini-pro':      { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-1.5-pro' },
+    'google-gemini-flash':    { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-1.5-flash' },
+    'google-gemini-nano':     { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-nano' },
+    'anthropic-claude-opus':  { url: 'https://api.anthropic.com/v1/messages', model: 'claude-opus-4-6' },
+    'anthropic-claude-sonnet':{ url: 'https://api.anthropic.com/v1/messages', model: 'claude-sonnet-4-6' },
+    'anthropic-claude-haiku': { url: 'https://api.anthropic.com/v1/messages', model: 'claude-haiku-4-5-20251001' },
+    'mistral-large':          { url: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-large-latest' },
+    'deepseek-chat':          { url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat' },
+    'perplexity':             { url: 'https://api.perplexity.ai/chat/completions', model: 'llama-3.1-sonar-large-128k-online' },
+    'together-ai':            { url: 'https://api.together.xyz/v1/chat/completions', model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo' },
   }
 
   // Add configured provider first
@@ -83,16 +95,26 @@ async function callAI(prompt: string, systemPrompt: string, providers: AIProvide
       const res = await fetch(p.url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${p.apiKey}`,
           'Content-Type': 'application/json',
-          ...(p.name === 'anthropic-claude' ? { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' } : {}),
+          // Anthropic menggunakan x-api-key, provider lain pakai Authorization Bearer
+          ...(p.name.startsWith('anthropic-')
+            ? { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' }
+            : { Authorization: `Bearer ${p.apiKey}` }),
         },
         body: JSON.stringify({
           model: p.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt },
-          ],
+          // Anthropic tidak mendukung messages[{role:'system'}] — gunakan system field terpisah
+          ...(p.name.startsWith('anthropic-')
+            ? {
+                system: systemPrompt,
+                messages: [{ role: 'user', content: prompt }],
+              }
+            : {
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: prompt },
+                ],
+              }),
           max_tokens: 500,
         }),
       })
@@ -101,7 +123,8 @@ async function callAI(prompt: string, systemPrompt: string, providers: AIProvide
       const data = await res.json()
       // Rotate for next call (round-robin)
       aiProviderIndex = (aiProviderIndex + 1) % providers.length
-      return data.choices?.[0]?.message?.content || data.content?.[0]?.text || 'Tidak ada jawaban.'
+      // Anthropic: data.content[0].text — OpenAI-compatible: data.choices[0].message.content
+      return data.content?.[0]?.text || data.choices?.[0]?.message?.content || 'Tidak ada jawaban.'
     } catch (err) {
       console.warn(`AI ${p.name} failed:`, err)
       aiProviderIndex = (aiProviderIndex + 1) % providers.length

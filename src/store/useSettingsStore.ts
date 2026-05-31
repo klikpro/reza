@@ -42,6 +42,7 @@ const createDefaultSettings = (userId: string): UserSettings => ({
   font_size: defaultSettings.font_size,
   animation: defaultSettings.animation,
   language: defaultSettings.language,
+  dify_enabled: false,
   updated_at: new Date().toISOString(),
 })
 
@@ -97,6 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
           'embedding_provider', 'embedding_api_key',
           'similarity_threshold', 'max_memories_retrieve', 'system_prompt',
           'default_view', 'sidebar_mode', 'font_size', 'animation', 'language',
+          'dify_enabled', 'dify_base_url', 'dify_api_key', 'dify_mode',
           'updated_at',
         ]
         const payload = Object.fromEntries(

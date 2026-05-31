@@ -22,7 +22,8 @@ export default function Categories() {
 
   useEffect(() => {
     if (user) fetchCategories(user.id)
-  }, [user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   const resetForm = () => {
     setForm({ name: '', color: '#7c5cfc', icon: '📁' })

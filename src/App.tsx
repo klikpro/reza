@@ -42,7 +42,13 @@ export default function App() {
   useEffect(() => {
     initialize()
     fetchBranding()
-  }, [initialize, fetchBranding])
+    // Cleanup auth listener saat komponen unmount
+    return () => {
+      const unsub = (window as unknown as Record<string, unknown>).__authUnsubscribe
+      if (typeof unsub === 'function') unsub()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (settings?.theme) {

@@ -23,7 +23,8 @@ export default function Dashboard() {
       fetchCategories(user.id)
       fetchSettings(user.id)
     }
-  }, [user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   const pinnedMemories = memories.filter(m => m.is_pinned)
   const recentMemories = memories.slice(0, 6)

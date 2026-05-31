@@ -116,24 +116,20 @@ export function createRoundRobinTTS(settings: UserSettings): RoundRobinTTS {
     return new RoundRobinTTS(providers)
   }
 
-  // Always Web Speech as base
-  providers.push({ name: 'web-speech', instance: new WebSpeechTTS(settings) })
-
+  // Build list dengan provider yang dikonfigurasi di depan, web-speech sebagai fallback terakhir
   if (settings.tts_api_key) {
     if (settings.tts_provider === 'openai-tts') {
       providers.push({ name: 'openai', instance: new OpenAITTS(settings) })
-    }
-    if (settings.tts_provider === 'elevenlabs') {
+    } else if (settings.tts_provider === 'elevenlabs') {
       providers.push({ name: 'elevenlabs', instance: new ElevenLabsTTS(settings) })
     }
   }
 
-  // Start from configured provider, fallback to web-speech
-  const startIdx = settings.tts_provider === 'openai-tts' && settings.tts_api_key ? 1
-    : settings.tts_provider === 'elevenlabs' && settings.tts_api_key ? (providers.length > 2 ? 2 : 1)
-    : 0
+  // Web speech selalu ada sebagai fallback
+  providers.push({ name: 'web-speech', instance: new WebSpeechTTS(settings) })
 
-  return new RoundRobinTTS(providers, startIdx)
+  // Mulai dari index 0 (provider utama, atau web-speech jika tidak ada API key)
+  return new RoundRobinTTS(providers, 0)
 }
 
 // Legacy

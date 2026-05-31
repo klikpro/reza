@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 import { WebSpeechSTT } from '@/services/sttService'
 import { createTTSProvider } from '@/services/ttsService'
 import { answerQuery } from '@/services/aiService'
+import { difyQuery, buildDifyConfig } from '@/services/difyService'
 import { toast } from '@/components/ui/Toaster'
 
 type Phase = 'idle' | 'listening' | 'processing' | 'speaking'
@@ -25,6 +26,7 @@ export default function Conversation() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [turns, setTurns] = useState<Turn[]>([])
   const [interim, setInterim] = useState('')
+  const [difyConversationId, setDifyConversationId] = useState<string | undefined>(undefined)
   const sttRef = useRef<WebSpeechSTT | null>(null)
   const stoppedRef = useRef(false)
   const logRef = useRef<HTMLDivElement>(null)

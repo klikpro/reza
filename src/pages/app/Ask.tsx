@@ -19,7 +19,7 @@ export default function Ask() {
   const { user } = useAuthStore()
   const { memories, addMemory } = useMemoryStore()
   const { settings } = useSettingsStore()
-  const { setVoiceState, setWakeWordActive, wakeWordActive } = useVoiceStore()
+  const { setWakeWordActive, wakeWordActive } = useVoiceStore()
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [query, setQuery] = useState('')
@@ -31,97 +31,7 @@ export default function Ask() {
   const [wakeDetected, setWakeDetected] = useState(false)
   const [wakeProvider, setWakeProvider] = useState<ReturnType<typeof createWakeWordProvider> | null>(null)
 
-  // Start/stop wake word listener
-  useEffect(() => {
-    if (!settings) return
-
-    if (wakeWordActive && settings.wake_word_provider !== 'none') {
-      const provider = createWakeWordProvider(settings)
-      setWakeProvider(provider)
-      const ok = provider.start(() => {
-        setWakeDetected(true)
-        setTimeout(() => setWakeDetected(false), 2000)
-
-        // Bunyikan greeting dari settings sebelum mulai listening
-        const mode = settings.wake_word_response_mode || 'greeting+chime'
-        const greeting = settings.wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'
-        const lang = settings.wake_word_language || 'id-ID'
-        const useChime = settings.wake_word_listening_sound !== false
-
-        // Chime
-        if ((mode === 'chime' || mode === 'greeting+chime') && useChime) {
-          try {
-            const ctx = new AudioContext()
-            const osc = ctx.createOscillator()
-            const gain = ctx.createGain()
-            osc.connect(gain); gain.connect(ctx.destination)
-            osc.type = 'sine'
-            osc.frequency.setValueAtTime(880, ctx.currentTime)
-            osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3)
-            gain.gain.setValueAtTime(0.4, ctx.currentTime)
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
-            osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
-            osc.onended = () => ctx.close()
-          } catch {}
-        }
-
-        // Greeting TTS — tunggu chime selesai dulu
-        const greetingDelay = (mode === 'greeting+chime' && useChime) ? 450 : 0
-        if (mode === 'greeting' || mode === 'greeting+chime') {
-          setTimeout(() => {
-            window.speechSynthesis.cancel()
-            const utt = new SpeechSynthesisUtterance(greeting)
-            utt.lang = lang; utt.rate = 1.0; utt.pitch = 1.1; utt.volume = 0.9
-            window.speechSynthesis.speak(utt)
-          }, greetingDelay)
-        }
-
-        // Mulai listening setelah greeting selesai (estimasi durasi greeting)
-        const listeningDelay = mode === 'silent' ? 0
-          : mode === 'chime' ? 500
-          : greeting.length * 60 + greetingDelay  // ~60ms per karakter
-        setTimeout(() => startListening(), listeningDelay)
-      })
-      if (!ok) toast('Wake word tidak dapat diaktifkan', 'error')
-    } else {
-      wakeProvider?.stop()
-      setWakeProvider(null)
-    }
-
-    return () => { wakeProvider?.stop() }
-  }, [wakeWordActive, settings?.wake_word_provider, settings?.wake_word_response_mode, settings?.wake_word_greeting])
-
-  const startListening = useCallback(async () => {
-    setPhase('listening')
-    setQuery('')
-
-    const stt = new WebSpeechSTT(settings?.stt_language || 'id-ID')
-    let finalText = ''
-
-    stt.start(
-      (result) => {
-        if (result.isFinal) {
-          finalText += result.transcript + ' '
-          setQuery(finalText)
-        } else {
-          setQuery(finalText + result.transcript)
-        }
-      },
-      (err) => { setPhase('error'); toast(err, 'error') }
-    )
-
-    // Auto-stop after 8 seconds of silence detection or manual stop
-    setTimeout(async () => {
-      stt.stop()
-      if (finalText.trim()) {
-        await handleSearch(finalText.trim())
-      } else {
-        setPhase('idle')
-      }
-    }, 8000)
-  }, [settings])
-
-  const handleSearch = async (q: string) => {
+  const handleSearch = useCallback(async (q: string) => {
     if (!user || !q.trim()) return
     setPhase('processing')
     setQuery(q)
@@ -159,7 +69,100 @@ export default function Ask() {
       setPhase('error')
       toast(err instanceof Error ? err.message : 'Gagal memproses pertanyaan', 'error')
     }
-  }
+  }, [user, settings, memories, difyConversationId])
+
+  const startListening = useCallback(async () => {
+    setPhase('listening')
+    setQuery('')
+
+    const stt = new WebSpeechSTT(settings?.stt_language || 'id-ID')
+    let finalText = ''
+    let stopped = false
+
+    stt.start(
+      (result) => {
+        if (result.isFinal) {
+          finalText += result.transcript + ' '
+          setQuery(finalText)
+        } else {
+          setQuery(finalText + result.transcript)
+        }
+      },
+      (err) => { setPhase('error'); toast(err, 'error') }
+    )
+
+    // Auto-stop after 8 seconds
+    setTimeout(async () => {
+      if (stopped) return
+      stopped = true
+      stt.stop()
+      if (finalText.trim()) {
+        await handleSearch(finalText.trim())
+      } else {
+        setPhase('idle')
+      }
+    }, 8000)
+  }, [settings, handleSearch])
+
+  // Start/stop wake word listener — diletakkan SETELAH startListening terdefinisi
+  useEffect(() => {
+    if (!settings) return
+    if (!wakeWordActive || settings.wake_word_provider === 'none') {
+      wakeProvider?.stop()
+      setWakeProvider(null)
+      return
+    }
+
+    // Hentikan provider lama sebelum buat yang baru (mencegah memory leak)
+    wakeProvider?.stop()
+
+    const provider = createWakeWordProvider(settings)
+    setWakeProvider(provider)
+    const ok = provider.start(() => {
+      setWakeDetected(true)
+      setTimeout(() => setWakeDetected(false), 2000)
+
+      const mode = settings.wake_word_response_mode || 'greeting+chime'
+      const greeting = settings.wake_word_greeting || 'Halo! Ada yang bisa saya bantu?'
+      const lang = settings.wake_word_language || 'id-ID'
+      const useChime = settings.wake_word_listening_sound !== false
+
+      if ((mode === 'chime' || mode === 'greeting+chime') && useChime) {
+        try {
+          const ctx = new AudioContext()
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.connect(gain); gain.connect(ctx.destination)
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(880, ctx.currentTime)
+          osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3)
+          gain.gain.setValueAtTime(0.4, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+          osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
+          osc.onended = () => ctx.close()
+        } catch {}
+      }
+
+      const greetingDelay = (mode === 'greeting+chime' && useChime) ? 450 : 0
+      if (mode === 'greeting' || mode === 'greeting+chime') {
+        setTimeout(() => {
+          window.speechSynthesis.cancel()
+          const utt = new SpeechSynthesisUtterance(greeting)
+          utt.lang = lang; utt.rate = 1.0; utt.pitch = 1.1; utt.volume = 0.9
+          window.speechSynthesis.speak(utt)
+        }, greetingDelay)
+      }
+
+      const listeningDelay = mode === 'silent' ? 0
+        : mode === 'chime' ? 500
+        : greeting.length * 60 + greetingDelay
+      setTimeout(() => startListening(), listeningDelay)
+    })
+    if (!ok) toast('Wake word tidak dapat diaktifkan', 'error')
+
+    return () => { provider.stop() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wakeWordActive, settings?.wake_word_provider, settings?.wake_word_response_mode, settings?.wake_word_greeting, startListening])
 
   const handleTextSearch = async (e: React.FormEvent) => {
     e.preventDefault()

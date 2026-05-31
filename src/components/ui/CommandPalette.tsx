@@ -18,7 +18,7 @@ const quickActions = [
 
 export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
-  const { memories } = useMemoryStore()
+  const { memories, setSearchQuery } = useMemoryStore()
   const navigate = useNavigate()
 
   // Keyboard shortcut
@@ -34,6 +34,11 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [open, onClose])
+
+  // Reset query saat palette ditutup
+  useEffect(() => {
+    if (!open) setQuery('')
+  }, [open])
 
   // Search results
   const filteredMemories = query.trim()
@@ -140,7 +145,12 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     key={memory.id}
                     className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm text-left transition-colors"
                     style={{ color: 'var(--text-primary)' }}
-                    onClick={() => { navigate('/app/memories'); onClose() }}
+                    onClick={() => {
+                      // Set search query di store agar Memories page langsung filter
+                      if (query.trim()) setSearchQuery(query.trim())
+                      navigate('/app/memories')
+                      onClose()
+                    }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >

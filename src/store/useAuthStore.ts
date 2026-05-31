@@ -18,6 +18,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialized: false,
 
   initialize: async () => {
+    // Cleanup subscription lama sebelum buat baru
+    // Mencegah multiple listener di React StrictMode (useEffect dipanggil 2x di dev)
+    const prev = (window as unknown as Record<string, unknown>).__authUnsubscribe
+    if (typeof prev === 'function') {
+      prev()
+      delete (window as unknown as Record<string, unknown>).__authUnsubscribe
+    }
+
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       set({
@@ -33,7 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ initialized: true })
     }
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         set({
           user: {
@@ -47,6 +55,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ user: null })
       }
     })
+
+    // Simpan untuk cleanup berikutnya
+    ;(window as unknown as Record<string, unknown>).__authUnsubscribe = () => subscription.unsubscribe()
   },
 
   signIn: async (email, password) => {

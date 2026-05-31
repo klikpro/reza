@@ -34,7 +34,8 @@ export default function Memories() {
 
   useEffect(() => {
     if (user) fetchMemories(user.id)
-  }, [user])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   // Filtered + sorted memories
   const filtered = useMemo(() => {
