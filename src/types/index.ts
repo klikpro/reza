@@ -72,6 +72,11 @@ export interface UserSettings {
   font_size: 'small' | 'medium' | 'large'
   animation: 'full' | 'reduced' | 'none'
   language: 'id' | 'en'
+  // ── Dify integration ────────────────────────────────────────
+  dify_enabled: boolean
+  dify_base_url?: string
+  dify_api_key?: string
+  dify_mode?: 'chat' | 'workflow'
   updated_at: string
 }
 

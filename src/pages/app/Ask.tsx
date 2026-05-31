@@ -8,6 +8,7 @@ import { useVoiceStore } from '@/store/useVoiceStore'
 import { WebSpeechSTT } from '@/services/sttService'
 import { createTTSProvider } from '@/services/ttsService'
 import { answerQuery } from '@/services/aiService'
+import { difyQuery, buildDifyConfig } from '@/services/difyService'
 import { createWakeWordProvider } from '@/services/wakeWordService'
 import type { Memory } from '@/types'
 import { toast } from '@/components/ui/Toaster'
@@ -25,6 +26,7 @@ export default function Ask() {
   const [textQuery, setTextQuery] = useState('')
   const [answer, setAnswer] = useState('')
   const [sources, setSources] = useState<Memory[]>([])
+  const [difyConversationId, setDifyConversationId] = useState<string | undefined>(undefined)
   const [speaking, setSpeaking] = useState(false)
   const [wakeDetected, setWakeDetected] = useState(false)
   const [wakeProvider, setWakeProvider] = useState<ReturnType<typeof createWakeWordProvider> | null>(null)
@@ -125,21 +127,37 @@ export default function Ask() {
     setQuery(q)
 
     try {
-      const result = await answerQuery(q, user.id, settings!, memories)
-      setAnswer(result.answer)
-      setSources(result.sources)
+      let answerText = ''
+      let resultSources: Memory[] = []
+
+      // Coba Dify dulu jika diaktifkan
+      const difyConfig = settings ? buildDifyConfig(settings, user.id) : null
+      if (difyConfig) {
+        const difyResult = await difyQuery(q, difyConfig, difyConversationId)
+        answerText = difyResult.answer
+        if (difyResult.conversationId) setDifyConversationId(difyResult.conversationId)
+      } else {
+        // Fallback ke aiService (memory search + LLM)
+        const result = await answerQuery(q, user.id, settings!, memories)
+        answerText = result.answer
+        resultSources = result.sources
+      }
+
+      setAnswer(answerText)
+      setSources(resultSources)
       setPhase('answer')
 
       // TTS
       if (settings && settings.tts_provider !== 'none') {
         setSpeaking(true)
         const tts = createTTSProvider(settings)
-        await tts.speak(result.answer)
+        await tts.speak(answerText)
         setSpeaking(false)
       }
-    } catch {
+    } catch (err) {
+      console.error('handleSearch error:', err)
       setPhase('error')
-      toast('Gagal memproses pertanyaan', 'error')
+      toast(err instanceof Error ? err.message : 'Gagal memproses pertanyaan', 'error')
     }
   }
 
@@ -347,7 +365,7 @@ export default function Ask() {
               <button onClick={handleSaveConversation} className="btn-secondary text-sm flex-1">
                 <Save size={14} /> Simpan sebagai Ingatan
               </button>
-              <button onClick={() => { setPhase('idle'); setAnswer(''); setQuery('') }} className="btn-secondary text-sm">
+              <button onClick={() => { setPhase('idle'); setAnswer(''); setQuery(''); setDifyConversationId(undefined) }} className="btn-secondary text-sm">
                 <RefreshCw size={14} /> Tanya Lagi
               </button>
             </div>

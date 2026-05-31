@@ -74,7 +74,7 @@ const WW_DEFAULTS: WakeWordForm = {
   wake_word_language: 'id-ID',
 }
 
-const TABS = ['Suara', 'Wake Word', 'AI', 'Branding', 'Akun', 'Tentang']
+const TABS = ['Suara', 'Wake Word', 'AI', 'Dify', 'Branding', 'Akun', 'Tentang']
 
 export default function Settings() {
   const { user, signOut } = useAuthStore()
@@ -581,8 +581,223 @@ export default function Settings() {
         </div>
       )}
 
-      {/* ── Tab 4: Akun ── */}
+      {/* ── Tab 3: Dify ── */}
+      {tab === 3 && (
+        <div className="space-y-4">
+          <section className="card p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                  🤖 Integrasi Dify
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  Aktifkan untuk mengirim query ke Dify workflow/chatbot sebagai AI engine utama
+                </p>
+              </div>
+              <button
+                onClick={() => save({ dify_enabled: !form.dify_enabled })}
+                className="relative w-11 h-6 rounded-full transition-colors"
+                style={{ background: form.dify_enabled ? 'var(--accent)' : 'rgba(100,116,139,0.3)' }}
+              >
+                <span
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm"
+                  style={{ transform: form.dify_enabled ? 'translateX(20px)' : 'translateX(0)' }}
+                />
+              </button>
+            </div>
+          </section>
+
+          {form.dify_enabled && (
+            <>
+              <section className="card p-4 space-y-3">
+                <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>⚙️ Konfigurasi Dify</h2>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    Base URL
+                  </label>
+                  <input
+                    type="text"
+                    value={(form.dify_base_url as string) || ''}
+                    onChange={e => setForm(f => ({ ...f, dify_base_url: e.target.value }))}
+                    onBlur={() => save({ dify_base_url: form.dify_base_url })}
+                    placeholder="https://api.dify.ai"
+                    className="input-field"
+                  />
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Untuk self-hosted: http://localhost atau URL server Dify Anda
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                    API Key (App Secret Key)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showKeys['dify_api_key'] ? 'text' : 'password'}
+                      value={(form.dify_api_key as string) || ''}
+                      onChange={e => setForm(f => ({ ...f, dify_api_key: e.target.value }))}
+                      onBlur={() => save({ dify_api_key: form.dify_api_key })}
+                      placeholder="app-xxxxxxxxxxxxxxxxxxxx"
+                      className="input-field"
+                      style={{ paddingRight: 40 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleKey('dify_api_key')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {showKeys['dify_api_key'] ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Dapatkan dari Dify → App → API Access → Secret Key
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Mode</label>
+                  <select
+                    className="input-field"
+                    value={(form.dify_mode as string) || 'chat'}
+                    onChange={e => { const v = e.target.value; setForm(f => ({ ...f, dify_mode: v as any })); save({ dify_mode: v as any }) }}
+                  >
+                    <option value="chat">💬 Chat (percakapan multi-giliran)</option>
+                    <option value="workflow">⚡ Workflow (satu-tembak)</option>
+                  </select>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Chat: menyimpan history percakapan. Workflow: setiap pertanyaan berdiri sendiri.
+                  </p>
+                </div>
+              </section>
+
+              {/* Diagram alur */}
+              <section className="rounded-xl p-4 space-y-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                <p className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>📊 Alur Data Aktif</p>
+                <div className="flex items-center gap-2 flex-wrap text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
+                  {[
+                    '🎤 Suara',
+                    '→',
+                    '📝 STT',
+                    '→',
+                    '🤖 Dify',
+                    '→',
+                    '📄 Teks',
+                    '→',
+                    '🔊 TTS',
+                  ].map((item, i) => (
+                    <span
+                      key={i}
+                      className={item === '→' ? '' : 'px-2 py-1 rounded-lg'}
+                      style={item !== '→' ? { background: 'var(--bg-tertiary)', color: 'var(--accent)', border: '1px solid var(--border)' } : { color: 'var(--text-muted)' }}
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  ⚡ Jika Dify dimatikan, sistem akan fallback ke AI provider yang dikonfigurasi di tab AI.
+                </p>
+              </section>
+            </>
+          )}
+
+          {!form.dify_enabled && (
+            <div className="card p-10 text-center space-y-2">
+              <p className="text-3xl">🤖</p>
+              <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Dify Tidak Aktif</p>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Aktifkan toggle di atas lalu isi URL dan API Key Dify Anda.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab 4: Branding ── */}
       {tab === 4 && (
+        <div className="space-y-6">
+          <section className="card p-5 space-y-5">
+            <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+              <Image size={18} style={{ color: 'var(--accent)' }} /> Branding Website
+            </h2>
+
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Nama Website</label>
+              <input className="input-field" value={brandingForm.site_name}
+                onChange={e => setBrandingForm(f => ({ ...f, site_name: e.target.value }))}
+                onBlur={() => { updateBranding({ site_name: brandingForm.site_name }); toast('✓ Nama disimpan', 'success') }}
+                placeholder="MemoryVault" />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Warna Aksen</label>
+              <div className="flex items-center gap-3">
+                <input type="color" value={brandingForm.accent_color}
+                  onChange={e => { setBrandingForm(f => ({ ...f, accent_color: e.target.value })); document.documentElement.style.setProperty('--accent', e.target.value) }}
+                  onBlur={() => { updateBranding({ accent_color: brandingForm.accent_color }); toast('✓ Warna disimpan', 'success') }}
+                  className="w-12 h-10 rounded-lg cursor-pointer border-0" />
+                <div className="flex-1">
+                  <input className="input-field" value={brandingForm.accent_color}
+                    onChange={e => { setBrandingForm(f => ({ ...f, accent_color: e.target.value })); document.documentElement.style.setProperty('--accent', e.target.value) }}
+                    onBlur={() => { updateBranding({ accent_color: brandingForm.accent_color }); toast('✓ Warna disimpan', 'success') }}
+                    placeholder="#06b6d4" />
+                </div>
+                <div className="flex gap-1.5">
+                  {['#06b6d4','#8b5cf6','#f97316','#10b981','#f43f5e','#3b82f6'].map(c => (
+                    <button key={c} onClick={() => { setBrandingForm(f => ({ ...f, accent_color: c })); document.documentElement.style.setProperty('--accent', c); updateBranding({ accent_color: c }) }}
+                      className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
+                      style={{ background: c, borderColor: brandingForm.accent_color === c ? '#fff' : 'transparent' }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-muted)' }}>Logo (Upload Gambar)</label>
+              {brandingForm.logo_url && (
+                <img src={brandingForm.logo_url} alt="logo" className="w-16 h-16 object-contain rounded-xl mb-3 border" style={{ borderColor: 'var(--border)' }} />
+              )}
+              <label className="btn-secondary text-sm cursor-pointer">
+                {uploadingLogo ? 'Mengupload...' : '📁 Pilih File Logo'}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setUploadingLogo(true)
+                    const ext = file.name.split('.').pop()
+                    const path = `logos/logo_${Date.now()}.${ext}`
+                    const { error } = await supabase.storage.from('branding').upload(path, file, { upsert: true })
+                    if (!error) {
+                      const { data: { publicUrl } } = supabase.storage.from('branding').getPublicUrl(path)
+                      setBrandingForm(f => ({ ...f, logo_url: publicUrl }))
+                      await updateBranding({ logo_url: publicUrl })
+                      toast('✓ Logo diperbarui', 'success')
+                    } else toast('Gagal upload logo', 'error')
+                    setUploadingLogo(false)
+                  }} />
+              </label>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>Preview Nama & Logo:</p>
+              <div className="flex items-center gap-2">
+                {brandingForm.logo_url
+                  ? <img src={brandingForm.logo_url} className="w-8 h-8 rounded-lg object-contain" />
+                  : <div className="w-8 h-8 rounded-lg" style={{ background: brandingForm.accent_color }} />}
+                <span className="font-black text-xl" style={{ color: brandingForm.accent_color }}>
+                  {brandingForm.site_name || 'MemoryVault'}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* ── Tab 5: Akun ── */}
+      {tab === 5 && (
         <div className="space-y-6">
           <section className="card p-5 space-y-4">
             <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -611,8 +826,8 @@ export default function Settings() {
         </div>
       )}
 
-      {/* ── Tab 5: Tentang ── */}
-      {tab === 5 && (
+      {/* ── Tab 6: Tentang ── */}
+      {tab === 6 && (
         <div className="card p-6 space-y-4">
           <h2 className="flex items-center gap-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
             <Info size={18} style={{ color: 'var(--accent)' }} /> Tentang MemoryVault
